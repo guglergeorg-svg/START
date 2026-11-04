@@ -188,19 +188,109 @@ st.markdown("""
         border-color: rgba(148, 163, 184, 0.14);
     }
 
-    @media (max-width: 700px) {
+    @media (max-width: 768px) {
         .block-container {
-            padding: 1rem 1rem 2rem;
+            padding: 0.35rem 0.45rem 1.25rem;
+        }
+
+        h1 {
+            font-size: clamp(1.35rem, 6vw, 1.8rem);
+            line-height: 1.15;
+            overflow-wrap: anywhere;
+        }
+
+        h2 {
+            margin-top: 1rem;
+            font-size: clamp(1.05rem, 4.8vw, 1.4rem);
+            line-height: 1.25;
+            overflow-wrap: anywhere;
+        }
+
+        h3 {
+            font-size: clamp(0.98rem, 4.2vw, 1.2rem);
+            line-height: 1.3;
+            overflow-wrap: anywhere;
+        }
+
+        [data-testid="stHorizontalBlock"] {
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        [data-testid="stHorizontalBlock"] > [data-testid="column"] {
+            width: 100% !important;
+            min-width: 0;
+            flex: 1 1 100% !important;
+        }
+
+        .st-key-kpi_grid [data-testid="stHorizontalBlock"] {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 0.55rem;
+        }
+
+        .st-key-kpi_grid [data-testid="column"] {
+            width: 100% !important;
+            min-width: 0;
+            flex: initial !important;
+        }
+
+        [data-testid="stMetric"] {
+            min-height: 88px;
+            padding: 0.7rem 0.65rem;
+            border-radius: 10px;
+        }
+
+        [data-testid="stMetricLabel"] {
+            font-size: 0.72rem;
+            line-height: 1.2;
+        }
+
+        [data-testid="stMetricValue"] {
+            font-size: clamp(0.95rem, 4.2vw, 1.25rem);
+            overflow-wrap: anywhere;
+        }
+
+        [data-testid="stTabs"] [role="tablist"] {
+            overflow-x: auto;
+            flex-wrap: nowrap;
+            scrollbar-width: thin;
+        }
+
+        [data-testid="stTabs"] [role="tab"] {
+            flex: 0 0 auto;
+            white-space: nowrap;
+        }
+
+        [data-testid="stPlotlyChart"],
+        [data-testid="stPydeckChart"] {
+            width: 100%;
+            max-width: 100%;
+        }
+
+        [data-testid="stSidebar"] [data-testid="stSelectbox"],
+        [data-testid="stSidebar"] [data-testid="stSlider"],
+        [data-testid="stSidebar"] [data-testid="stToggle"] {
+            width: 100%;
+        }
+
+        [data-testid="stTextArea"] textarea {
+            font-size: 0.85rem;
         }
 
         .dashboard-header {
             align-items: flex-start;
             flex-direction: column;
-            padding: 1.25rem;
+            gap: 0.85rem;
+            padding: 1rem;
+            margin: 0.2rem 0 0.8rem;
         }
 
         .gateway-status {
             white-space: normal;
+            flex-wrap: wrap;
+            font-size: 0.78rem;
+            padding: 0.55rem 0.75rem;
         }
     }
     </style>
@@ -452,14 +542,15 @@ st.markdown(
 )
 st.caption(f"Letztes Datenpaket · {df['Timestamp'].iloc[-1].strftime('%H:%M:%S')} Uhr")
 
-col1, col2, col3, col4, col5 = st.columns(5)
 latest = df.iloc[-1]
+with st.container(key="kpi_grid"):
+    col1, col2, col3, col4, col5 = st.columns(5)
 
-col1.metric("Vorlauf (T_VL)", f"{latest['Vorlauf_C']} °C", f"{latest['Vorlauf_C'] - df['Vorlauf_C'].iloc[-15]:.1f} °C (1h)")
-col2.metric("Rücklauf (T_RL)", f"{latest['Ruecklauf_C']} °C", f"{latest['Ruecklauf_C'] - df['Ruecklauf_C'].iloc[-15]:.1f} °C (1h)", delta_color="inverse")
-col3.metric("Spreizung (ΔT)", f"{latest['Spreizung_K']} K", "Ziel: 12-15 K" if latest['Spreizung_K'] < 8 else "Optimal", delta_color="normal" if latest['Spreizung_K'] >= 10 else "inverse")
-col4.metric("Warmwasser (T_WW)", f"{latest['Warmwasser_C']} °C", "ÖNORM B 5019 OK" if latest['Warmwasser_C'] >= 55 else "Unter 55 °C!", delta_color="normal" if latest['Warmwasser_C'] >= 55 else "inverse")
-col5.metric("Erkannter Mehrverbrauch", f"€ {loss_eur} / Monat", f"€ {loss_eur * 6} / Heizsaison" if loss_eur > 0 else "0 € Verlust", delta_color="inverse")
+    col1.metric("Vorlauf (T_VL)", f"{latest['Vorlauf_C']} °C", f"{latest['Vorlauf_C'] - df['Vorlauf_C'].iloc[-15]:.1f} °C (1h)")
+    col2.metric("Rücklauf (T_RL)", f"{latest['Ruecklauf_C']} °C", f"{latest['Ruecklauf_C'] - df['Ruecklauf_C'].iloc[-15]:.1f} °C (1h)", delta_color="inverse")
+    col3.metric("Spreizung (ΔT)", f"{latest['Spreizung_K']} K", "Ziel: 12-15 K" if latest['Spreizung_K'] < 8 else "Optimal", delta_color="normal" if latest['Spreizung_K'] >= 10 else "inverse")
+    col4.metric("Warmwasser (T_WW)", f"{latest['Warmwasser_C']} °C", "ÖNORM B 5019 OK" if latest['Warmwasser_C'] >= 55 else "Unter 55 °C!", delta_color="normal" if latest['Warmwasser_C'] >= 55 else "inverse")
+    col5.metric("Erkannter Mehrverbrauch", f"€ {loss_eur} / Monat", f"€ {loss_eur * 6} / Heizsaison" if loss_eur > 0 else "0 € Verlust", delta_color="inverse")
 
 # --- DETAILANSICHTEN ---
 portfolio_tab, diagnosis_tab, telemetry_tab = st.tabs([
@@ -580,17 +671,26 @@ with telemetry_tab:
 
     fig.update_layout(
         height=550,
+        autosize=True,
         template="plotly_dark",
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         hovermode="x unified",
-        margin=dict(l=20, r=20, t=55, b=20),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        margin=dict(l=20, r=20, t=95, b=35),
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.18,
+            xanchor="left",
+            x=0,
+            entrywidthmode="fraction",
+            entrywidth=0.24,
+        ),
         font=dict(color="#cbd5e1"),
     )
     fig.update_xaxes(gridcolor="rgba(148, 163, 184, 0.12)", zerolinecolor="rgba(148, 163, 184, 0.12)")
     fig.update_yaxes(gridcolor="rgba(148, 163, 184, 0.12)", zerolinecolor="rgba(148, 163, 184, 0.12)")
-    st.plotly_chart(fig, width="stretch")
+    st.plotly_chart(fig, width="stretch", config={"responsive": True})
 
 with portfolio_tab:
     st.subheader("Portfolio-Leitstelle Innsbruck")
