@@ -349,8 +349,12 @@ portfolio_locations = [
     },
 ]
 
-portfolio = [location["scenario"] for location in portfolio_locations]
-selected_building = st.sidebar.selectbox("Liegenschaft auswählen:", portfolio)
+selected_location = st.sidebar.selectbox(
+    "Liegenschaft auswählen:",
+    portfolio_locations,
+    format_func=lambda location: location["building"],
+)
+selected_building = selected_location["scenario"]
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("⚡ Live-Sensor-Demo (Pitch-Modus)")
@@ -408,11 +412,7 @@ for location in portfolio_locations:
 portfolio_df = pd.DataFrame(portfolio_rows)
 
 # --- HAUPTBEREICH: HEADER & KPI CARDS ---
-building_name = next(
-    location["building"]
-    for location in portfolio_locations
-    if location["scenario"] == selected_building
-)
+building_name = selected_location["building"]
 st.markdown(
     f"""
     <div class="dashboard-header">
