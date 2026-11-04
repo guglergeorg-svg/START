@@ -459,10 +459,31 @@ portfolio_locations.extend(
     for name, latitude, longitude in demo_optimal_locations
 )
 
-selected_location = st.sidebar.selectbox(
+
+def sync_location_selection(widget_key: str) -> None:
+    selected_index = st.session_state[widget_key]
+    st.session_state["selected_location_index"] = selected_index
+    st.session_state["sidebar_location_index"] = selected_index
+    st.session_state["chart_location_index"] = selected_index
+    st.session_state["portfolio_location_index"] = selected_index
+
+
+for state_key in (
+    "selected_location_index",
+    "sidebar_location_index",
+    "chart_location_index",
+    "portfolio_location_index",
+):
+    st.session_state.setdefault(state_key, 0)
+
+selected_location = portfolio_locations[st.session_state["selected_location_index"]]
+st.sidebar.selectbox(
     "Liegenschaft auswählen:",
-    portfolio_locations,
-    format_func=lambda location: location["building"],
+    options=range(len(portfolio_locations)),
+    format_func=lambda index: portfolio_locations[index]["building"],
+    key="sidebar_location_index",
+    on_change=sync_location_selection,
+    args=("sidebar_location_index",),
 )
 selected_building = selected_location["scenario"]
 
@@ -634,6 +655,14 @@ with diagnosis_tab:
             st.caption("Bei aktuellem Anlagenstatus ist kein Einsparpotenzial diagnostiziert.")
 
 with telemetry_tab:
+    st.selectbox(
+        "Anlage für das Diagramm auswählen",
+        options=range(len(portfolio_locations)),
+        format_func=lambda index: portfolio_locations[index]["building"],
+        key="chart_location_index",
+        on_change=sync_location_selection,
+        args=("chart_location_index",),
+    )
     st.subheader("Thermodynamischer Zeitverlauf")
     st.markdown(
         '<p class="section-kicker">Vorlauf, Rücklauf, Warmwasser und Systemspreizung · letzte 72 Stunden</p>',
@@ -717,7 +746,35 @@ with portfolio_tab:
         """,
         unsafe_allow_html=True,
     )
-    map_col, table_col = st.columns([1.1, 1], gap="large")
+    list_col, map_col = st.columns([1, 1.1], gap="large")
+
+    with list_col:
+        st.markdown("#### Anlage aus der Liste auswählen")
+        status_icons = {
+            "Kritisch": "🔴",
+            "Hygiene-Alarm": "🔴",
+            "Warnung": "🟠",
+            "Optimal": "🟢",
+        }
+        with st.container(height=430, border=True):
+            st.radio(
+                "Portfolio-Anlagen",
+                options=range(len(portfolio_rows)),
+                format_func=lambda index: (
+                    f"{status_icons[portfolio_rows[index]['Status']]} "
+                    f"{portfolio_rows[index]['Objekt']} · "
+                    f"{portfolio_rows[index]['Status']} · "
+                    f"€ {portfolio_rows[index]['Verlust / Monat (€)']:,} / Mo."
+                ),
+                key="portfolio_location_index",
+                on_change=sync_location_selection,
+                args=("portfolio_location_index",),
+                label_visibility="collapsed",
+            )
+        st.metric(
+            "Portfolio-Verlust pro Monat",
+            f"€ {int(portfolio_df['Verlust / Monat (€)'].sum()):,}",
+        )
 
     with map_col:
         import pydeck as pdk
@@ -759,23 +816,3 @@ with portfolio_tab:
             },
         )
         st.pydeck_chart(portfolio_map, width="stretch", height=430)
-
-    with table_col:
-        st.markdown("#### Objektübersicht")
-        st.dataframe(
-            portfolio_df[["Objekt", "Status", "Verlust / Monat (€)"]],
-            hide_index=True,
-            width="stretch",
-            column_config={
-                "Objekt": st.column_config.TextColumn("Liegenschaft"),
-                "Status": st.column_config.TextColumn("Anlagenstatus"),
-                "Verlust / Monat (€)": st.column_config.NumberColumn(
-                    "Verlust / Monat",
-                    format="€ %d",
-                ),
-            },
-        )
-        st.metric(
-            "Portfolio-Verlust pro Monat",
-            f"€ {int(portfolio_df['Verlust / Monat (€)'].sum()):,}",
-        )
