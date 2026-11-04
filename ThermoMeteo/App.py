@@ -350,14 +350,14 @@ portfolio_locations = [
 ]
 
 demo_optimal_locations = [
-    ("Demoanlage 01 · Optimal", 47.2742, 11.3881),
-    ("Demoanlage 02 · Optimal", 47.2729, 11.4052),
-    ("Demoanlage 03 · Optimal", 47.2692, 11.4108),
-    ("Demoanlage 04 · Optimal", 47.2608, 11.4026),
-    ("Demoanlage 05 · Optimal", 47.2587, 11.3914),
-    ("Demoanlage 06 · Optimal", 47.2619, 11.3785),
-    ("Demoanlage 07 · Optimal", 47.2714, 11.3738),
-    ("Demoanlage 08 · Optimal", 47.2761, 11.3984),
+    ("Maximilianstraße 12", 47.2742, 11.3881),
+    ("Maria-Theresien-Straße 18", 47.2729, 11.4052),
+    ("Innstraße 31", 47.2692, 11.4108),
+    ("Amraser Straße 24", 47.2608, 11.4026),
+    ("Leopoldstraße 16", 47.2587, 11.3914),
+    ("Höttinger Gasse 9", 47.2619, 11.3785),
+    ("Andreas-Hofer-Straße 22", 47.2714, 11.3738),
+    ("Haller Straße 35", 47.2761, 11.3984),
 ]
 portfolio_locations.extend(
     {
@@ -597,7 +597,7 @@ with portfolio_tab:
     st.markdown(
         f"""
         <p class="section-kicker">
-            {len(portfolio_df)} Anlagen · {len(demo_optimal_locations)} simulierte Demoanlagen mit optimalem Profil.
+            {len(portfolio_df)} Anlagen · {len(demo_optimal_locations)} simulierte Beispielobjekte mit optimalem Profil.
             Marker und Gebäudestatus sind farblich codiert.
         </p>
         <div style="display:flex;flex-wrap:wrap;gap:0.65rem;margin:0.4rem 0 1rem;">
