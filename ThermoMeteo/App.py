@@ -442,10 +442,10 @@ col4.metric("Warmwasser (T_WW)", f"{latest['Warmwasser_C']} °C", "ÖNORM B 5019
 col5.metric("Erkannter Mehrverbrauch", f"€ {loss_eur} / Monat", f"€ {loss_eur * 6} / Heizsaison" if loss_eur > 0 else "0 € Verlust", delta_color="inverse")
 
 # --- DETAILANSICHTEN ---
-diagnosis_tab, telemetry_tab, portfolio_tab = st.tabs([
+portfolio_tab, diagnosis_tab, telemetry_tab = st.tabs([
+    "🗺️ Portfolio-Leitstelle Innsbruck",
     "🚨 KI-Diagnose & Wartungs-Ticket",
     "📈 Live-Telemetrie & Hydraulik",
-    "🗺️ Portfolio-Leitstelle Innsbruck",
 ])
 
 with diagnosis_tab:
@@ -575,7 +575,25 @@ with telemetry_tab:
 with portfolio_tab:
     st.subheader("Portfolio-Leitstelle Innsbruck")
     st.markdown(
-        '<p class="section-kicker">Live-Status und diagnostiziertes monatliches Einsparpotenzial je Liegenschaft</p>',
+        """
+        <p class="section-kicker">
+            Anlagenstatus auf einen Blick · Marker und Gebäudestatus sind farblich codiert
+        </p>
+        <div style="display:flex;flex-wrap:wrap;gap:0.65rem;margin:0.4rem 0 1rem;">
+            <span style="display:inline-flex;align-items:center;gap:0.45rem;padding:0.4rem 0.7rem;border:1px solid rgba(239,68,68,.3);border-radius:999px;background:rgba(239,68,68,.1);color:#fecaca;font-size:.82rem;">
+                <span style="width:.55rem;height:.55rem;border-radius:50%;background:#ef4444;"></span>
+                Rot · Kritisch / Hygiene-Alarm
+            </span>
+            <span style="display:inline-flex;align-items:center;gap:0.45rem;padding:0.4rem 0.7rem;border:1px solid rgba(249,115,22,.3);border-radius:999px;background:rgba(249,115,22,.1);color:#fed7aa;font-size:.82rem;">
+                <span style="width:.55rem;height:.55rem;border-radius:50%;background:#f97316;"></span>
+                Orange · Warnung
+            </span>
+            <span style="display:inline-flex;align-items:center;gap:0.45rem;padding:0.4rem 0.7rem;border:1px solid rgba(34,197,94,.3);border-radius:999px;background:rgba(34,197,94,.1);color:#bbf7d0;font-size:.82rem;">
+                <span style="width:.55rem;height:.55rem;border-radius:50%;background:#22c55e;"></span>
+                Grün · Optimal
+            </span>
+        </div>
+        """,
         unsafe_allow_html=True,
     )
     map_col, table_col = st.columns([1.1, 1], gap="large")
