@@ -349,6 +349,26 @@ portfolio_locations = [
     },
 ]
 
+demo_optimal_locations = [
+    ("Demoanlage 01 · Optimal", 47.2742, 11.3881),
+    ("Demoanlage 02 · Optimal", 47.2729, 11.4052),
+    ("Demoanlage 03 · Optimal", 47.2692, 11.4108),
+    ("Demoanlage 04 · Optimal", 47.2608, 11.4026),
+    ("Demoanlage 05 · Optimal", 47.2587, 11.3914),
+    ("Demoanlage 06 · Optimal", 47.2619, 11.3785),
+    ("Demoanlage 07 · Optimal", 47.2714, 11.3738),
+    ("Demoanlage 08 · Optimal", 47.2761, 11.3984),
+]
+portfolio_locations.extend(
+    {
+        "scenario": f"Optimaler Betrieb ({name})",
+        "building": name,
+        "latitude": latitude,
+        "longitude": longitude,
+    }
+    for name, latitude, longitude in demo_optimal_locations
+)
+
 selected_location = st.sidebar.selectbox(
     "Liegenschaft auswählen:",
     portfolio_locations,
@@ -575,9 +595,10 @@ with telemetry_tab:
 with portfolio_tab:
     st.subheader("Portfolio-Leitstelle Innsbruck")
     st.markdown(
-        """
+        f"""
         <p class="section-kicker">
-            Anlagenstatus auf einen Blick · Marker und Gebäudestatus sind farblich codiert
+            {len(portfolio_df)} Anlagen · {len(demo_optimal_locations)} simulierte Demoanlagen mit optimalem Profil.
+            Marker und Gebäudestatus sind farblich codiert.
         </p>
         <div style="display:flex;flex-wrap:wrap;gap:0.65rem;margin:0.4rem 0 1rem;">
             <span style="display:inline-flex;align-items:center;gap:0.45rem;padding:0.4rem 0.7rem;border:1px solid rgba(239,68,68,.3);border-radius:999px;background:rgba(239,68,68,.1);color:#fecaca;font-size:.82rem;">
@@ -619,7 +640,7 @@ with portfolio_tab:
             initial_view_state=pdk.ViewState(
                 latitude=47.2675,
                 longitude=11.3915,
-                zoom=13,
+                zoom=12.5,
                 pitch=0,
             ),
             map_style="https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
