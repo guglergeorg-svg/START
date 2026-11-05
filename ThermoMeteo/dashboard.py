@@ -1233,65 +1233,81 @@ with portfolio_tab:
         )
 
     with map_col:
-        st.markdown("### Schematische Lageübersicht")
-        st.caption(
-            "Lokale Koordinatenansicht ohne externe Kartendienste oder Kartenabrufe."
-        )
-        selected_index = st.session_state["selected_location_index"]
-        marker_sizes = [
-            20 if index == selected_index else 14
-            for index in range(len(portfolio_df))
-        ]
-        marker_colors = [
-            f"rgb({row.color_r}, {row.color_g}, {row.color_b})"
-            for row in portfolio_df.itertuples()
-        ]
-        location_chart = go.Figure(
-            go.Scatter(
-                x=portfolio_df["longitude"],
-                y=portfolio_df["latitude"],
-                mode="markers",
-                marker={
-                    "size": marker_sizes,
-                    "color": marker_colors,
-                    "line": {"color": "#ffffff", "width": 1.5},
-                },
-                customdata=portfolio_df[["Objekt", "Status", "Verlust"]].to_numpy(),
-                hovertemplate=(
-                    "<b>%{customdata[0]}</b><br>"
-                    "Status: %{customdata[1]}<br>"
-                    "Verlust: %{customdata[2]}<extra></extra>"
-                ),
-                showlegend=False,
+        st.markdown("### Portfolio-Karte")
+        if not st.session_state.get("external_map_consent", False):
+            with st.container(border=True):
+                st.markdown("#### Innsbruck auf der Karte entdecken")
+                st.write(
+                    "Die interaktive Karte verwendet den Kartendienst CARTO. "
+                    "Beim Laden wird eine Verbindung zu CARTO hergestellt; dabei "
+                    "werden Ihre IP-Adresse und technische Verbindungsdaten "
+                    "übermittelt. Kartenkacheln für den sichtbaren Kartenausschnitt "
+                    "werden von CARTO geladen."
+                )
+                if st.button(
+                    "Externe Karte laden (CARTO)",
+                    key="load_external_map",
+                    type="primary",
+                    width="stretch",
+                ):
+                    st.session_state["external_map_consent"] = True
+                    st.rerun()
+        else:
+            import pydeck as pdk
+
+            if st.button(
+                "Externe Karte ausblenden / Einwilligung zurückziehen",
+                key="revoke_external_map_consent",
+            ):
+                st.session_state["external_map_consent"] = False
+                st.rerun()
+
+            marker_layer = pdk.Layer(
+                "ScatterplotLayer",
+                data=portfolio_df,
+                get_position="[longitude, latitude]",
+                get_fill_color="[color_r, color_g, color_b, 220]",
+                get_line_color="[255, 255, 255, 220]",
+                get_radius=100,
+                radius_min_pixels=8,
+                radius_max_pixels=18,
+                line_width_min_pixels=1,
+                stroked=True,
+                pickable=True,
             )
-        )
-        location_chart.update_layout(
-            height=430,
-            autosize=True,
-            template="plotly_white",
-            paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="#f9fbf9",
-            margin={"l": 24, "r": 24, "t": 20, "b": 35},
-            font={"color": "#43564c", "family": 'Inter, "Segoe UI", sans-serif'},
-            xaxis={
-                "title": "Längengrad",
-                "gridcolor": "rgba(91, 117, 101, 0.14)",
-                "zeroline": False,
-            },
-            yaxis={
-                "title": "Breitengrad",
-                "gridcolor": "rgba(91, 117, 101, 0.14)",
-                "zeroline": False,
-                "scaleanchor": "x",
-                "scaleratio": 1,
-            },
-            hoverlabel={"bgcolor": "#ffffff", "font": {"color": "#172a27"}},
-        )
-        st.plotly_chart(
-            location_chart,
-            width="stretch",
-            config={"responsive": True, "displaylogo": False},
-        )
+            portfolio_map = pdk.Deck(
+                layers=[marker_layer],
+                initial_view_state=pdk.ViewState(
+                    latitude=47.2675,
+                    longitude=11.3915,
+                    zoom=12.5,
+                    pitch=0,
+                ),
+                map_style=(
+                    "https://basemaps.cartocdn.com/gl/"
+                    "dark-matter-gl-style/style.json"
+                ),
+                tooltip={
+                    "html": (
+                        "<b>{Objekt}</b><br/>"
+                        "{Adresse}<br/>"
+                        "Status: {Status}<br/>"
+                        "Verlust: {Verlust}"
+                    ),
+                    "style": {
+                        "backgroundColor": "#ffffff",
+                        "color": "#172a27",
+                        "border": "1px solid #dfe7df",
+                    },
+                },
+            )
+            st.pydeck_chart(
+                portfolio_map,
+                width="stretch",
+                height=430,
+                key="portfolio_map",
+            )
+
         with st.expander("Standorte als Tabelle anzeigen"):
             st.dataframe(
                 portfolio_df[
