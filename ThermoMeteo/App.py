@@ -293,7 +293,405 @@ st.markdown("""
             padding: 0.55rem 0.75rem;
         }
     }
-    </style>
+
+        :root {
+            color-scheme: light;
+            --ink: #172a27;
+            --muted: #586a61;
+            --line: #e4eae5;
+            --paper: #f4f7f3;
+            --green: #187b63;
+        }
+
+        .stApp,
+        [data-testid="stAppViewContainer"],
+        [data-testid="stMain"] {
+            background: var(--paper);
+            color: var(--ink);
+            font-family: Inter, "Segoe UI", sans-serif;
+        }
+
+        .block-container {
+            max-width: 1540px;
+            padding: 1.45rem clamp(1rem, 3vw, 2.8rem) 3rem;
+        }
+
+        section[data-testid="stSidebar"] {
+            background: #edf2ed;
+            border-right: 1px solid #dfe7df;
+        }
+
+        section[data-testid="stSidebar"] > div {
+            padding: 1.6rem 1rem 2rem;
+        }
+
+        section[data-testid="stSidebar"] h1,
+        section[data-testid="stSidebar"] h2,
+        section[data-testid="stSidebar"] h3 {
+            color: var(--ink);
+        }
+
+        section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p,
+        [data-testid="stCaptionContainer"] {
+            color: var(--muted);
+        }
+
+        section[data-testid="stSidebar"] [data-baseweb="select"] > div {
+            background: #fff !important;
+            border-color: #d7e1d9 !important;
+        }
+
+        section[data-testid="stSidebar"] [data-baseweb="select"] *,
+        section[data-testid="stSidebar"] [data-testid="stSlider"] *,
+        section[data-testid="stSidebar"] [data-testid="stToggle"] * {
+            color: var(--ink);
+        }
+
+        h1, h2, h3, h4 {
+            color: var(--ink);
+            letter-spacing: -0.035em;
+        }
+
+        h2 {
+            margin-top: 1.8rem;
+            font-size: 1.45rem;
+        }
+
+        h3 {
+            font-size: 1.15rem;
+        }
+
+        .hero {
+            position: relative;
+            display: flex;
+            min-height: 238px;
+            align-items: center;
+            justify-content: space-between;
+            gap: 2rem;
+            overflow: hidden;
+            padding: clamp(1.5rem, 4vw, 3rem);
+            margin: 0.3rem 0 1.2rem;
+            color: #effaf3;
+            background:
+                radial-gradient(ellipse at 83% 45%, rgba(52, 211, 153, .2), transparent 34%),
+                linear-gradient(112deg, #102d2a 0%, #163e37 54%, #155443 100%);
+            border: 1px solid rgba(255, 255, 255, .1);
+            border-radius: 24px;
+            box-shadow: 0 22px 55px rgba(27, 68, 54, .14);
+            isolation: isolate;
+        }
+
+        .hero::after {
+            position: absolute;
+            z-index: -1;
+            inset: 0;
+            content: "";
+            opacity: .16;
+            background-image: radial-gradient(rgba(220, 252, 231, .6) .7px, transparent .7px);
+            background-size: 20px 20px;
+            mask-image: linear-gradient(90deg, transparent 30%, #000 100%);
+        }
+
+        .hero-copy {
+            position: relative;
+            z-index: 1;
+            max-width: 620px;
+        }
+
+        .hero-eyebrow {
+            display: flex;
+            align-items: center;
+            gap: .55rem;
+            margin-bottom: 1rem;
+            color: #a7d9c2;
+            font-size: .72rem;
+            font-weight: 750;
+            letter-spacing: .16em;
+            text-transform: uppercase;
+        }
+
+        .hero-mark {
+            display: grid;
+            width: 1.65rem;
+            height: 1.65rem;
+            place-items: center;
+            color: #b6f2d1;
+            background: rgba(136, 220, 177, .12);
+            border: 1px solid rgba(169, 236, 195, .25);
+            border-radius: 8px;
+            font-size: .9rem;
+        }
+
+        .hero h1 {
+            margin: 0;
+            color: #f5fbf7;
+            font-size: clamp(2.05rem, 4vw, 3.25rem);
+            font-weight: 620;
+            letter-spacing: -.06em;
+            line-height: 1.02;
+        }
+
+        .hero-building {
+            margin: 1rem 0 0;
+            color: #c2d8ce;
+            font-size: 1rem;
+        }
+
+        .hero-building strong {
+            color: #fff;
+            font-weight: 620;
+        }
+
+        .hero-meta {
+            display: flex;
+            align-items: center;
+            gap: .65rem;
+            margin-top: 1.35rem;
+            color: #afc8bb;
+            font-size: .8rem;
+        }
+
+        .gateway-status {
+            display: inline-flex;
+            align-items: center;
+            gap: .55rem;
+            padding: .48rem .78rem;
+            color: #c9f8dd;
+            font-size: .76rem;
+            font-weight: 650;
+            background: rgba(125, 211, 158, .1);
+            border: 1px solid rgba(157, 231, 183, .2);
+            border-radius: 999px;
+        }
+
+        .gateway-dot {
+            position: relative;
+            width: .48rem;
+            height: .48rem;
+            background: #72e0a6;
+            border-radius: 50%;
+            box-shadow: 0 0 13px rgba(114, 224, 166, .8);
+            animation: status-glow 2.4s ease-in-out infinite;
+        }
+
+        .hero-art {
+            width: min(39%, 390px);
+            min-width: 220px;
+            height: auto;
+            overflow: visible;
+            opacity: .95;
+        }
+
+        .flow-line {
+            fill: none;
+            stroke-dasharray: 9 13;
+            animation: flow 5s linear infinite;
+        }
+
+        .flow-line--slow {
+            animation-duration: 8s;
+            animation-direction: reverse;
+        }
+
+        .orbit {
+            transform-origin: 180px 110px;
+            animation: orbit 18s linear infinite;
+        }
+
+        @keyframes flow {
+            to { stroke-dashoffset: -88; }
+        }
+
+        @keyframes orbit {
+            to { transform: rotate(360deg); }
+        }
+
+        @keyframes status-glow {
+            50% { box-shadow: 0 0 4px rgba(114, 224, 166, .45); }
+        }
+
+        [data-testid="stMetric"] {
+            min-height: 132px;
+            padding: 1.2rem 1.25rem;
+            background: #fff;
+            border: 1px solid var(--line);
+            border-radius: 16px;
+            box-shadow: 0 5px 18px rgba(32, 57, 43, .035);
+            transition: transform 180ms ease, box-shadow 180ms ease;
+        }
+
+        [data-testid="stMetric"]:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 28px rgba(32, 57, 43, .08);
+        }
+
+        [data-testid="stMetricLabel"] {
+            color: var(--muted);
+            font-size: .78rem;
+            font-weight: 600;
+        }
+
+        [data-testid="stMetricValue"] {
+            color: var(--ink);
+            font-size: clamp(.9rem, 1.35vw, 1.35rem);
+            font-weight: 680;
+            letter-spacing: -.045em;
+            line-height: 1.2;
+            overflow-wrap: anywhere;
+            white-space: normal;
+        }
+
+        [data-testid="stMetricLabel"] {
+            font-size: .72rem;
+            line-height: 1.25;
+            overflow-wrap: anywhere;
+            white-space: normal;
+        }
+
+        [data-testid="stMetricDelta"] {
+            font-size: .74rem;
+        }
+
+        [data-testid="stTabs"] {
+            margin-top: 1.4rem;
+        }
+
+        [data-testid="stTabs"] [role="tablist"] {
+            gap: .55rem;
+            border-bottom: 1px solid #e1e8e2;
+        }
+
+        [data-testid="stTabs"] [role="tab"] {
+            min-height: 3rem;
+            color: #687871;
+            font-size: .87rem;
+        }
+
+        [data-testid="stTabs"] button[aria-selected="true"] {
+            color: #176e59;
+            border-bottom: 2px solid #24846a;
+        }
+
+        [data-testid="stTabs"] [data-baseweb="tab-highlight"] {
+            background-color: #24846a !important;
+        }
+
+        [data-testid="stAlert"] {
+            border: 1px solid rgba(120, 140, 128, .18);
+            border-radius: 14px;
+            box-shadow: 0 3px 12px rgba(32, 57, 43, .035);
+        }
+
+        [data-testid="stPlotlyChart"],
+        [data-testid="stPydeckChart"] {
+            overflow: hidden;
+            border: 1px solid var(--line);
+            border-radius: 18px;
+            box-shadow: 0 8px 26px rgba(32, 57, 43, .05);
+        }
+
+        [data-baseweb="select"] > div,
+        [data-testid="stTextArea"] textarea,
+        [data-testid="stNumberInput"] input {
+            background: #fff;
+            border-color: #dce5de;
+            border-radius: 10px;
+        }
+
+        [data-testid="stTextArea"] textarea,
+        [data-testid="stNumberInput"] input {
+            color: var(--ink);
+        }
+
+        [data-testid="stRadio"] label {
+            color: var(--ink);
+        }
+
+        .stButton button {
+            min-height: 2.8rem;
+            border-radius: 10px;
+            font-weight: 650;
+            transition: transform 160ms ease, box-shadow 160ms ease;
+        }
+
+        .stButton button[kind="primary"] {
+            background: #187b63;
+            border-color: #187b63;
+        }
+
+        .stButton button:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 7px 16px rgba(24, 123, 99, .14);
+        }
+
+        .section-kicker {
+            margin: .25rem 0 1.1rem;
+            color: var(--muted);
+            font-size: .86rem;
+        }
+
+        hr {
+            border-color: #dfe7df;
+        }
+
+        @media (max-width: 900px) {
+            .hero {
+                min-height: 210px;
+                padding: 1.6rem;
+            }
+
+            .hero-art {
+                width: 34%;
+                min-width: 175px;
+                margin-right: -1rem;
+            }
+        }
+
+        @media (max-width: 600px) {
+            .block-container {
+                padding: .7rem .75rem 1.5rem;
+            }
+
+            .hero {
+                min-height: 0;
+                padding: 1.35rem;
+                border-radius: 18px;
+            }
+
+            .hero-art {
+                display: none;
+            }
+
+            .hero h1 {
+                font-size: 2.2rem;
+            }
+
+            .hero-meta {
+                flex-wrap: wrap;
+            }
+
+            [data-testid="stMetric"] {
+                min-height: 94px;
+                padding: .75rem;
+                border-radius: 12px;
+            }
+
+            [data-testid="stMetricLabel"] {
+                font-size: .68rem;
+            }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            *,
+            *::before,
+            *::after {
+                scroll-behavior: auto !important;
+                animation-duration: .01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: .01ms !important;
+            }
+        }
+        </style>
 """, unsafe_allow_html=True)
 
 # --- 1. REALISTISCHE HKLS-DATENGENERIERUNG ---
@@ -546,32 +944,62 @@ portfolio_df = pd.DataFrame(portfolio_rows)
 building_name = selected_location["building"]
 st.markdown(
     f"""
-    <div class="dashboard-header">
-        <div>
-            <div class="dashboard-eyebrow">HEATPULSE AI · ANLAGENÜBERSICHT</div>
-            <h1>Heizhaus-Monitor</h1>
-            <p class="dashboard-building">{building_name}</p>
+    <div class="hero">
+        <div class="hero-copy">
+            <div class="hero-eyebrow"><span class="hero-mark">✳</span> HEATPULSE <span>·</span> ENERGIE-MONITORING</div>
+            <h1>Wärme im<br>Gleichgewicht.</h1>
+            <p class="hero-building">Anlagenübersicht für <strong>{building_name}</strong></p>
+            <div class="hero-meta">
+                <span class="gateway-status"><span class="gateway-dot"></span> Gateway online</span>
+                <span>LTE-M · −74 dBm</span>
+                <span>·</span>
+                <span>Aktualisiert {df['Timestamp'].iloc[-1].strftime('%H:%M')} Uhr</span>
+            </div>
         </div>
-        <div class="gateway-status">
-            <span class="gateway-dot"></span>
-            <span>Gateway online</span>
-            <span>· LTE-M -74 dBm</span>
-        </div>
+        <svg class="hero-art" viewBox="0 0 390 220" role="img" aria-label="Animierte Visualisierung des Heizkreislaufs">
+            <defs>
+                <linearGradient id="pipe" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0%" stop-color="#b9f4d0" stop-opacity=".85"/>
+                    <stop offset="100%" stop-color="#50cba0" stop-opacity=".25"/>
+                </linearGradient>
+                <radialGradient id="core">
+                    <stop offset="0%" stop-color="#bdf7d4" stop-opacity=".32"/>
+                    <stop offset="100%" stop-color="#bdf7d4" stop-opacity="0"/>
+                </radialGradient>
+            </defs>
+            <circle cx="180" cy="110" r="95" fill="url(#core)"/>
+            <g fill="none" stroke="url(#pipe)" stroke-width="1.2" opacity=".7">
+                <path d="M22 65h68a18 18 0 0 1 18 18v12a18 18 0 0 0 18 18h111a18 18 0 0 0 18-18V74a18 18 0 0 1 18-18h93"/>
+                <path d="M22 152h43a18 18 0 0 0 18-18v-9a18 18 0 0 1 18-18h35a18 18 0 0 1 18 18v13a18 18 0 0 0 18 18h135a18 18 0 0 0 18-18v-9a18 18 0 0 1 18-18h25"/>
+                <path d="M70 31v21a18 18 0 0 0 18 18h23m205 99v-24a18 18 0 0 0-18-18h-27"/>
+            </g>
+            <g fill="none" stroke="#d4ffe3" stroke-width="2.4" stroke-linecap="round">
+                <path class="flow-line" d="M22 65h68a18 18 0 0 1 18 18v12a18 18 0 0 0 18 18h111a18 18 0 0 0 18-18V74a18 18 0 0 1 18-18h93"/>
+                <path class="flow-line flow-line--slow" d="M22 152h43a18 18 0 0 0 18-18v-9a18 18 0 0 1 18-18h35a18 18 0 0 1 18 18v13a18 18 0 0 0 18 18h135a18 18 0 0 0 18-18v-9a18 18 0 0 1 18-18h25"/>
+            </g>
+            <g class="orbit" fill="none" stroke="#baf4d1" stroke-opacity=".38" stroke-width="1">
+                <circle cx="180" cy="110" r="61" stroke-dasharray="2 7"/>
+                <circle cx="180" cy="49" r="3" fill="#baf4d1" stroke="none"/>
+            </g>
+            <circle cx="180" cy="110" r="30" fill="#d3ffe2" fill-opacity=".08" stroke="#c6f7d8" stroke-opacity=".65"/>
+            <path d="M183 87c-11 0-17 9-17 18 0 11 14 25 14 25s17-16 17-26c0-9-6-17-14-17Zm0 24a6 6 0 1 1 0-12 6 6 0 0 1 0 12Z" fill="#c6f7d8"/>
+            <circle cx="93" cy="65" r="3" fill="#f3c984"/>
+            <circle cx="318" cy="152" r="3" fill="#f3c984"/>
+        </svg>
     </div>
     """,
     unsafe_allow_html=True,
 )
-st.caption(f"Letztes Datenpaket · {df['Timestamp'].iloc[-1].strftime('%H:%M:%S')} Uhr")
 
 latest = df.iloc[-1]
 with st.container(key="kpi_grid"):
     col1, col2, col3, col4, col5 = st.columns(5)
 
-    col1.metric("Vorlauf (T_VL)", f"{latest['Vorlauf_C']} °C", f"{latest['Vorlauf_C'] - df['Vorlauf_C'].iloc[-15]:.1f} °C (1h)")
-    col2.metric("Rücklauf (T_RL)", f"{latest['Ruecklauf_C']} °C", f"{latest['Ruecklauf_C'] - df['Ruecklauf_C'].iloc[-15]:.1f} °C (1h)", delta_color="inverse")
-    col3.metric("Spreizung (ΔT)", f"{latest['Spreizung_K']} K", "Ziel: 12-15 K" if latest['Spreizung_K'] < 8 else "Optimal", delta_color="normal" if latest['Spreizung_K'] >= 10 else "inverse")
-    col4.metric("Warmwasser (T_WW)", f"{latest['Warmwasser_C']} °C", "ÖNORM B 5019 OK" if latest['Warmwasser_C'] >= 55 else "Unter 55 °C!", delta_color="normal" if latest['Warmwasser_C'] >= 55 else "inverse")
-    col5.metric("Erkannter Mehrverbrauch", f"€ {loss_eur} / Monat", f"€ {loss_eur * 6} / Heizsaison" if loss_eur > 0 else "0 € Verlust", delta_color="inverse")
+    col1.metric("Vorlauf", f"{latest['Vorlauf_C']} °C", f"{latest['Vorlauf_C'] - df['Vorlauf_C'].iloc[-15]:.1f} °C (1h)")
+    col2.metric("Rücklauf", f"{latest['Ruecklauf_C']} °C", f"{latest['Ruecklauf_C'] - df['Ruecklauf_C'].iloc[-15]:.1f} °C (1h)", delta_color="inverse")
+    col3.metric("Spreizung", f"{latest['Spreizung_K']} K", "Ziel: 12-15 K" if latest['Spreizung_K'] < 8 else "Optimal", delta_color="normal" if latest['Spreizung_K'] >= 10 else "inverse")
+    col4.metric("Warmwasser", f"{latest['Warmwasser_C']} °C", "ÖNORM B 5019 OK" if latest['Warmwasser_C'] >= 55 else "Unter 55 °C!", delta_color="normal" if latest['Warmwasser_C'] >= 55 else "inverse")
+    col5.metric("Mehrverbrauch / Monat", f"€ {loss_eur} / Mo.", f"€ {loss_eur * 6} / Heizsaison" if loss_eur > 0 else "0 € Verlust", delta_color="inverse")
 
 # --- DETAILANSICHTEN ---
 portfolio_tab, diagnosis_tab, telemetry_tab = st.tabs([
@@ -701,7 +1129,7 @@ with telemetry_tab:
     fig.update_layout(
         height=550,
         autosize=True,
-        template="plotly_dark",
+        template="plotly_white",
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         hovermode="x unified",
@@ -715,10 +1143,10 @@ with telemetry_tab:
             entrywidthmode="fraction",
             entrywidth=0.24,
         ),
-        font=dict(color="#cbd5e1"),
+        font=dict(color="#53635c", family='Inter, "Segoe UI", sans-serif'),
     )
-    fig.update_xaxes(gridcolor="rgba(148, 163, 184, 0.12)", zerolinecolor="rgba(148, 163, 184, 0.12)")
-    fig.update_yaxes(gridcolor="rgba(148, 163, 184, 0.12)", zerolinecolor="rgba(148, 163, 184, 0.12)")
+    fig.update_xaxes(gridcolor="rgba(91, 117, 101, 0.12)", zerolinecolor="rgba(91, 117, 101, 0.12)")
+    fig.update_yaxes(gridcolor="rgba(91, 117, 101, 0.12)", zerolinecolor="rgba(91, 117, 101, 0.12)")
     st.plotly_chart(fig, width="stretch", config={"responsive": True})
 
 with portfolio_tab:
@@ -730,15 +1158,15 @@ with portfolio_tab:
             Marker und Gebäudestatus sind farblich codiert.
         </p>
         <div style="display:flex;flex-wrap:wrap;gap:0.65rem;margin:0.4rem 0 1rem;">
-            <span style="display:inline-flex;align-items:center;gap:0.45rem;padding:0.4rem 0.7rem;border:1px solid rgba(239,68,68,.3);border-radius:999px;background:rgba(239,68,68,.1);color:#fecaca;font-size:.82rem;">
+            <span style="display:inline-flex;align-items:center;gap:0.45rem;padding:0.4rem 0.7rem;border:1px solid rgba(239,68,68,.3);border-radius:999px;background:rgba(239,68,68,.1);color:#9f2525;font-size:.82rem;">
                 <span style="width:.55rem;height:.55rem;border-radius:50%;background:#ef4444;"></span>
                 Rot · Kritisch / Hygiene-Alarm
             </span>
-            <span style="display:inline-flex;align-items:center;gap:0.45rem;padding:0.4rem 0.7rem;border:1px solid rgba(249,115,22,.3);border-radius:999px;background:rgba(249,115,22,.1);color:#fed7aa;font-size:.82rem;">
+            <span style="display:inline-flex;align-items:center;gap:0.45rem;padding:0.4rem 0.7rem;border:1px solid rgba(249,115,22,.3);border-radius:999px;background:rgba(249,115,22,.1);color:#9a4611;font-size:.82rem;">
                 <span style="width:.55rem;height:.55rem;border-radius:50%;background:#f97316;"></span>
                 Orange · Warnung
             </span>
-            <span style="display:inline-flex;align-items:center;gap:0.45rem;padding:0.4rem 0.7rem;border:1px solid rgba(34,197,94,.3);border-radius:999px;background:rgba(34,197,94,.1);color:#bbf7d0;font-size:.82rem;">
+            <span style="display:inline-flex;align-items:center;gap:0.45rem;padding:0.4rem 0.7rem;border:1px solid rgba(34,197,94,.3);border-radius:999px;background:rgba(34,197,94,.1);color:#17643e;font-size:.82rem;">
                 <span style="width:.55rem;height:.55rem;border-radius:50%;background:#22c55e;"></span>
                 Grün · Optimal
             </span>
