@@ -1185,104 +1185,83 @@ with portfolio_tab:
         """,
         unsafe_allow_html=True,
     )
-    list_col, map_col = st.columns([1, 1.1], gap="large")
-
-    with list_col:
-        st.markdown("### Portfolio-Anlagen")
-        st.dataframe(
-            portfolio_df[["Objekt", "Status", "Verlust / Monat (€)"]],
-            hide_index=True,
-            width="stretch",
-            height=430,
-        )
-        st.metric(
-            "Portfolio-Verlust pro Monat",
-            f"€ {int(portfolio_df['Verlust / Monat (€)'].sum()):,}",
-        )
-
-    with map_col:
-        st.markdown("### Portfolio-Karte")
-        if not st.session_state.get("external_map_consent", False):
-            with st.container(border=True):
-                st.markdown("#### Innsbruck auf der Karte entdecken")
-                st.write(
-                    "Die interaktive Karte verwendet den Kartendienst CARTO. "
-                    "Beim Laden wird eine Verbindung zu CARTO hergestellt; dabei "
-                    "werden Ihre IP-Adresse und technische Verbindungsdaten "
-                    "übermittelt. Kartenkacheln für den sichtbaren Kartenausschnitt "
-                    "werden von CARTO geladen."
-                )
-                if st.button(
-                    "Externe Karte laden (CARTO)",
-                    key="load_external_map",
-                    type="primary",
-                    width="stretch",
-                ):
-                    st.session_state["external_map_consent"] = True
-                    st.rerun()
-        else:
-            import pydeck as pdk
-
+    st.metric(
+        "Portfolio-Verlust pro Monat",
+        f"€ {int(portfolio_df['Verlust / Monat (€)'].sum()):,}",
+    )
+    st.markdown("### Portfolio-Karte")
+    if not st.session_state.get("external_map_consent", False):
+        with st.container(border=True):
+            st.markdown("#### Innsbruck auf der Karte entdecken")
+            st.write(
+                "Die interaktive Karte verwendet den Kartendienst CARTO. "
+                "Beim Laden wird eine Verbindung zu CARTO hergestellt; dabei "
+                "werden Ihre IP-Adresse und technische Verbindungsdaten "
+                "übermittelt. Kartenkacheln für den sichtbaren Kartenausschnitt "
+                "werden von CARTO geladen."
+            )
             if st.button(
-                "Externe Karte ausblenden / Einwilligung zurückziehen",
-                key="revoke_external_map_consent",
+                "Externe Karte laden (CARTO)",
+                key="load_external_map",
+                type="primary",
+                width="stretch",
             ):
-                st.session_state["external_map_consent"] = False
+                st.session_state["external_map_consent"] = True
                 st.rerun()
+    else:
+        import pydeck as pdk
 
-            marker_layer = pdk.Layer(
-                "ScatterplotLayer",
-                data=portfolio_df,
-                get_position="[longitude, latitude]",
-                get_fill_color="[color_r, color_g, color_b, 220]",
-                get_line_color="[255, 255, 255, 220]",
-                get_radius=100,
-                radius_min_pixels=8,
-                radius_max_pixels=18,
-                line_width_min_pixels=1,
-                stroked=True,
-                pickable=True,
-            )
-            portfolio_map = pdk.Deck(
-                layers=[marker_layer],
-                initial_view_state=pdk.ViewState(
-                    latitude=47.2675,
-                    longitude=11.3915,
-                    zoom=12.5,
-                    pitch=0,
+        if st.button(
+            "Externe Karte ausblenden / Einwilligung zurückziehen",
+            key="revoke_external_map_consent",
+        ):
+            st.session_state["external_map_consent"] = False
+            st.rerun()
+
+        marker_layer = pdk.Layer(
+            "ScatterplotLayer",
+            data=portfolio_df,
+            get_position="[longitude, latitude]",
+            get_fill_color="[color_r, color_g, color_b, 220]",
+            get_line_color="[255, 255, 255, 220]",
+            get_radius=100,
+            radius_min_pixels=8,
+            radius_max_pixels=18,
+            line_width_min_pixels=1,
+            stroked=True,
+            pickable=True,
+        )
+        portfolio_map = pdk.Deck(
+            layers=[marker_layer],
+            initial_view_state=pdk.ViewState(
+                latitude=47.2675,
+                longitude=11.3915,
+                zoom=12.5,
+                pitch=0,
+            ),
+            map_style=(
+                "https://basemaps.cartocdn.com/gl/"
+                "dark-matter-gl-style/style.json"
+            ),
+            tooltip={
+                "html": (
+                    "<b>{Objekt}</b><br/>"
+                    "{Adresse}<br/>"
+                    "Status: {Status}<br/>"
+                    "Verlust: {Verlust}"
                 ),
-                map_style=(
-                    "https://basemaps.cartocdn.com/gl/"
-                    "dark-matter-gl-style/style.json"
-                ),
-                tooltip={
-                    "html": (
-                        "<b>{Objekt}</b><br/>"
-                        "{Adresse}<br/>"
-                        "Status: {Status}<br/>"
-                        "Verlust: {Verlust}"
-                    ),
-                    "style": {
-                        "backgroundColor": "#ffffff",
-                        "color": "#172a27",
-                        "border": "1px solid #dfe7df",
-                    },
+                "style": {
+                    "backgroundColor": "#ffffff",
+                    "color": "#172a27",
+                    "border": "1px solid #dfe7df",
                 },
-            )
-            st.pydeck_chart(
-                portfolio_map,
-                width="stretch",
-                height=430,
-                key="portfolio_map",
-            )
-
-        with st.expander("Standorte als Tabelle anzeigen"):
-            st.dataframe(
-                portfolio_df[
-                    ["Objekt", "Status", "Verlust / Monat (€)", "latitude", "longitude"]
-                ],
-                hide_index=True,
-                width="stretch",
-            )
+            },
+        )
+        st.pydeck_chart(
+            portfolio_map,
+            width="stretch",
+            height=620,
+            key="portfolio_map",
+        )
 
 render_site_footer()
