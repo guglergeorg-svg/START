@@ -887,19 +887,10 @@ portfolio_locations.extend(
 
 
 def sync_location_selection(widget_key: str) -> None:
-    selected_index = st.session_state[widget_key]
-    st.session_state["selected_location_index"] = selected_index
-    st.session_state["sidebar_location_index"] = selected_index
-    st.session_state["chart_location_index"] = selected_index
-    st.session_state["portfolio_location_index"] = selected_index
+    st.session_state["selected_location_index"] = st.session_state[widget_key]
 
 
-for state_key in (
-    "selected_location_index",
-    "sidebar_location_index",
-    "chart_location_index",
-    "portfolio_location_index",
-):
+for state_key in ("selected_location_index", "sidebar_location_index"):
     st.session_state.setdefault(state_key, 0)
 
 selected_location = portfolio_locations[st.session_state["selected_location_index"]]
@@ -1111,14 +1102,6 @@ with diagnosis_tab:
             st.caption("Bei aktuellem Anlagenstatus ist kein Einsparpotenzial diagnostiziert.")
 
 with telemetry_tab:
-    st.selectbox(
-        "Anlage für das Diagramm auswählen",
-        options=range(len(portfolio_locations)),
-        format_func=lambda index: portfolio_locations[index]["building"],
-        key="chart_location_index",
-        on_change=sync_location_selection,
-        args=("chart_location_index",),
-    )
     st.header("Thermodynamischer Zeitverlauf")
     st.markdown(
         '<p class="section-kicker">Vorlauf, Rücklauf, Warmwasser und Systemspreizung · letzte 72 Stunden</p>',
@@ -1205,28 +1188,13 @@ with portfolio_tab:
     list_col, map_col = st.columns([1, 1.1], gap="large")
 
     with list_col:
-        st.markdown("### Anlage aus der Liste auswählen")
-        status_icons = {
-            "Kritisch": "🔴",
-            "Hygiene-Alarm": "🔴",
-            "Warnung": "🟠",
-            "Optimal": "🟢",
-        }
-        with st.container(height=430, border=True):
-            st.radio(
-                "Portfolio-Anlagen",
-                options=range(len(portfolio_rows)),
-                format_func=lambda index: (
-                    f"{status_icons[portfolio_rows[index]['Status']]} "
-                    f"{portfolio_rows[index]['Objekt']} · "
-                    f"{portfolio_rows[index]['Status']} · "
-                    f"€ {portfolio_rows[index]['Verlust / Monat (€)']:,} / Mo."
-                ),
-                key="portfolio_location_index",
-                on_change=sync_location_selection,
-                args=("portfolio_location_index",),
-                label_visibility="collapsed",
-            )
+        st.markdown("### Portfolio-Anlagen")
+        st.dataframe(
+            portfolio_df[["Objekt", "Status", "Verlust / Monat (€)"]],
+            hide_index=True,
+            width="stretch",
+            height=430,
+        )
         st.metric(
             "Portfolio-Verlust pro Monat",
             f"€ {int(portfolio_df['Verlust / Monat (€)'].sum()):,}",
