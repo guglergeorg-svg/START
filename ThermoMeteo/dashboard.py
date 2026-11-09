@@ -545,7 +545,7 @@ st.markdown("""
             font-size: .74rem;
         }
 
-        .st-key-dashboard_intro {
+        [data-testid="stLayoutWrapper"]:has(> .st-key-dashboard_intro) {
             position: sticky;
             top: 0;
             z-index: 0;
