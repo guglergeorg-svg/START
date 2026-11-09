@@ -549,6 +549,14 @@ st.markdown("""
             margin-top: 1.4rem;
         }
 
+        [data-testid="stTabs"] [role="tabpanel"] {
+            position: sticky;
+            top: 0;
+            z-index: 5;
+            padding-top: 1.1rem;
+            background: var(--paper);
+        }
+
         [data-testid="stTabs"] [role="tablist"] {
             gap: .55rem;
             border-bottom: 1px solid #e1e8e2;
