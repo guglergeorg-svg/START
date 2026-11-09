@@ -545,15 +545,16 @@ st.markdown("""
             font-size: .74rem;
         }
 
-        [data-testid="stTabs"] {
-            margin-top: 1.4rem;
-        }
-
-        [data-testid="stTabs"] [role="tabpanel"] {
+        .st-key-dashboard_intro {
             position: sticky;
             top: 0;
-            z-index: 5;
-            padding-top: 1.1rem;
+            z-index: 0;
+        }
+
+        [data-testid="stTabs"] {
+            position: relative;
+            z-index: 1;
+            margin-top: 1.4rem;
             background: var(--paper);
         }
 
@@ -969,8 +970,9 @@ portfolio_df = pd.DataFrame(portfolio_rows)
 
 # --- HAUPTBEREICH: HEADER & KPI CARDS ---
 building_name = selected_location["building"]
-st.markdown(
-    f"""
+with st.container(key="dashboard_intro"):
+    st.markdown(
+        f"""
     <div class="hero">
         <div class="hero-copy">
             <div class="hero-eyebrow"><span class="hero-mark">✳</span> HEATPULSE <span>·</span> ENERGIE-MONITORING</div>
@@ -1015,18 +1017,18 @@ st.markdown(
         </svg>
     </div>
     """,
-    unsafe_allow_html=True,
-)
+        unsafe_allow_html=True,
+    )
 
-latest = df.iloc[-1]
-with st.container(key="kpi_grid"):
-    col1, col2, col3, col4, col5 = st.columns(5)
+    latest = df.iloc[-1]
+    with st.container(key="kpi_grid"):
+        col1, col2, col3, col4, col5 = st.columns(5)
 
-    col1.metric("Vorlauf", f"{latest['Vorlauf_C']} °C", f"{latest['Vorlauf_C'] - df['Vorlauf_C'].iloc[-15]:.1f} °C (1h)")
-    col2.metric("Rücklauf", f"{latest['Ruecklauf_C']} °C", f"{latest['Ruecklauf_C'] - df['Ruecklauf_C'].iloc[-15]:.1f} °C (1h)", delta_color="inverse")
-    col3.metric("Spreizung", f"{latest['Spreizung_K']} K", "Ziel: 12-15 K" if latest['Spreizung_K'] < 8 else "Optimal", delta_color="normal" if latest['Spreizung_K'] >= 10 else "inverse")
-    col4.metric("Warmwasser", f"{latest['Warmwasser_C']} °C", "Hygiene OK" if latest['Warmwasser_C'] >= 55 else "Zu niedrig!", delta_color="normal" if latest['Warmwasser_C'] >= 55 else "inverse")
-    col5.metric("Mehrverbrauch", f"€ {loss_eur} / Mo.", f"6 Mon. €{loss_eur * 6:,}" if loss_eur > 0 else "Kein Verlust", delta_color="inverse")
+        col1.metric("Vorlauf", f"{latest['Vorlauf_C']} °C", f"{latest['Vorlauf_C'] - df['Vorlauf_C'].iloc[-15]:.1f} °C (1h)")
+        col2.metric("Rücklauf", f"{latest['Ruecklauf_C']} °C", f"{latest['Ruecklauf_C'] - df['Ruecklauf_C'].iloc[-15]:.1f} °C (1h)", delta_color="inverse")
+        col3.metric("Spreizung", f"{latest['Spreizung_K']} K", "Ziel: 12-15 K" if latest['Spreizung_K'] < 8 else "Optimal", delta_color="normal" if latest['Spreizung_K'] >= 10 else "inverse")
+        col4.metric("Warmwasser", f"{latest['Warmwasser_C']} °C", "Hygiene OK" if latest['Warmwasser_C'] >= 55 else "Zu niedrig!", delta_color="normal" if latest['Warmwasser_C'] >= 55 else "inverse")
+        col5.metric("Mehrverbrauch", f"€ {loss_eur} / Mo.", f"6 Mon. €{loss_eur * 6:,}" if loss_eur > 0 else "Kein Verlust", delta_color="inverse")
 
 # --- DETAILANSICHTEN ---
 portfolio_tab, diagnosis_tab, telemetry_tab = st.tabs([
