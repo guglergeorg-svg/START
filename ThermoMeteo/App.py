@@ -66,6 +66,22 @@ if raw_data:
     st.subheader("Temperaturverlauf")
     st.line_chart(df_chart)
 
+    st.subheader("Systemstatus & Alarme")
+    MIN_TEMPERATUR = 20.0
+    latest_values = df_chart.iloc[-1]
+
+    for sensor, temp in latest_values.items():
+        if pd.isna(temp):
+            continue
+
+        if temp < MIN_TEMPERATUR:
+            st.error(
+                f"🚨 ALARM: Vorlauftemperatur an Sensor {sensor} kritisch niedrig! "
+                f"Aktuell: {temp:.1f} °C"
+            )
+        else:
+            st.success(f"✅ Sensor {sensor} im Normalbereich ({temp:.1f} °C).")
+
     with st.expander("Rohe Tabellendaten einsehen"):
         st.dataframe(df)
 else:
