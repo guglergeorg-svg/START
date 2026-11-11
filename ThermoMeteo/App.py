@@ -54,11 +54,13 @@ raw_data = load_data()
 if raw_data:
     df = pd.DataFrame(raw_data)
     df["created_at"] = pd.to_datetime(df["created_at"])
+    df["temperatur"] = pd.to_numeric(df["temperatur"])
     df_chart = df.pivot(
         index="created_at",
         columns="sensor_id",
         values="temperatur",
     )
+    df_chart = df_chart.ffill().bfill()
 
     st.success("Daten erfolgreich geladen!")
     st.subheader("Temperaturverlauf")
