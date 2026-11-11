@@ -1,5 +1,5 @@
 import streamlit as st
-import streamlit as st
+import pandas as pd
 from supabase import create_client, Client
 
 st.set_page_config(
@@ -49,10 +49,22 @@ def load_data():
 
 st.title("Vorlaufwächter Dashboard")
 
-data = load_data()
+raw_data = load_data()
 
-if data:
-    st.success("Daten erfolgreich aus Supabase geladen!")
-    st.dataframe(data) # Zeigt die rohen JSON-Daten als Tabelle an
+if raw_data:
+    df = pd.DataFrame(raw_data)
+    df["created_at"] = pd.to_datetime(df["created_at"])
+    df_chart = df.pivot(
+        index="created_at",
+        columns="sensor_id",
+        values="temperatur",
+    )
+
+    st.success("Daten erfolgreich geladen!")
+    st.subheader("Temperaturverlauf")
+    st.line_chart(df_chart)
+
+    with st.expander("Rohe Tabellendaten einsehen"):
+        st.dataframe(df)
 else:
     st.warning("Keine Daten gefunden oder Verbindungsfehler.")
