@@ -345,6 +345,13 @@ st.markdown("""
             letter-spacing: -0.035em;
         }
 
+        main h1,
+        main h2,
+        main h3,
+        main h4 {
+            text-align: center;
+        }
+
         h2 {
             margin-top: 1.8rem;
             font-size: 1.45rem;
@@ -389,11 +396,13 @@ st.markdown("""
             position: relative;
             z-index: 1;
             max-width: 620px;
+            text-align: center;
         }
 
         .hero-eyebrow {
             display: flex;
             align-items: center;
+            justify-content: center;
             gap: .55rem;
             margin-bottom: 1rem;
             color: #a7d9c2;
@@ -438,6 +447,7 @@ st.markdown("""
         .hero-meta {
             display: flex;
             align-items: center;
+            justify-content: center;
             gap: .65rem;
             margin-top: 1.35rem;
             color: #afc8bb;
@@ -506,11 +516,16 @@ st.markdown("""
         [data-testid="stMetric"] {
             min-height: 132px;
             padding: 1.2rem 1.25rem;
+            text-align: center;
             background: #fff;
             border: 1px solid var(--line);
             border-radius: 16px;
             box-shadow: 0 5px 18px rgba(32, 57, 43, .035);
             transition: transform 180ms ease, box-shadow 180ms ease;
+        }
+
+        [data-testid="stMetric"] > div {
+            align-items: center;
         }
 
         [data-testid="stMetric"]:hover {
@@ -665,6 +680,7 @@ st.markdown("""
             margin: .25rem 0 1.1rem;
             color: var(--muted);
             font-size: .86rem;
+            text-align: center;
         }
 
         hr {
@@ -1178,7 +1194,7 @@ with portfolio_tab:
             {len(portfolio_df)} Anlagen · {len(demo_optimal_locations)} simulierte Beispielobjekte mit optimalem Profil.
             Marker und Gebäudestatus sind farblich codiert.
         </p>
-        <div style="display:flex;flex-wrap:wrap;gap:0.65rem;margin:0.4rem 0 1rem;">
+        <div style="display:flex;flex-wrap:wrap;justify-content:center;gap:0.65rem;margin:0.4rem 0 1rem;">
             <span style="display:inline-flex;align-items:center;gap:0.45rem;padding:0.4rem 0.7rem;border:1px solid rgba(239,68,68,.3);border-radius:999px;background:rgba(239,68,68,.1);color:#9f2525;font-size:.82rem;">
                 <span style="width:.55rem;height:.55rem;border-radius:50%;background:#ef4444;"></span>
                 Rot · Kritisch / Hygiene-Alarm
