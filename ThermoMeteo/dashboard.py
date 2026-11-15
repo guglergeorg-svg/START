@@ -1,3 +1,5 @@
+import html
+import json
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -1028,7 +1030,7 @@ def pair_prototype_sensor_readings(measurements: pd.DataFrame) -> pd.DataFrame:
     )
 
 
-def analyze_heating_chart(df: pd.DataFrame) -> str:
+def analyze_heating_chart(df: pd.DataFrame) -> dict[str, str]:
     if df.empty:
         raise ValueError("Es liegen keine Heizungsdaten für die Analyse vor.")
     if not isinstance(df.index, pd.DatetimeIndex):
@@ -1049,10 +1051,16 @@ def analyze_heating_chart(df: pd.DataFrame) -> str:
         "für Vorlauf und Rücklauf auf Takten des Wärmeerzeugers, eine zu "
         "geringe Spreizung (Delta T) sowie plötzliche Temperaturabfälle und "
         "mögliche Sensorstörungen. Nutze ausschließlich die bereitgestellten "
-        "Messwerte und erfinde keine Ursachen oder Messwerte. Antworte kurz, "
-        "strukturiert und auf Deutsch mit genau diesen Abschnitten: "
-        "Status, Beobachtung, Ursache & Maßnahme. Wenn die Daten für eine "
-        "belastbare Diagnose nicht ausreichen, sage das ausdrücklich."
+        "Messwerte und erfinde keine Ursachen oder Messwerte. Antworte auf "
+        "Deutsch ausschließlich mit einem validen JSON-Objekt ohne Markdown "
+        "und genau diesen vier Schlüsseln: "
+        '{"status":"Optimal | Warnung | Kritisch", '
+        '"kurzfazit":"1 prägnanter Satz zum Gesamtzustand", '
+        '"beobachtung":"Konkrete Analyse der Vorlauf-/Rücklaufwerte und Spreizung", '
+        '"massnahme":"Konkrete HKLS-Handlungsempfehlung"}. '
+        "Der Wert von status muss exakt Optimal, Warnung oder Kritisch sein. "
+        "Wenn die Daten für eine belastbare Diagnose nicht ausreichen, sage "
+        "das ausdrücklich."
     )
     if any("vorläufig" in str(column).lower() for column in recent_data.columns):
         system_instruction += (
@@ -1084,15 +1092,41 @@ def analyze_heating_chart(df: pd.DataFrame) -> str:
                 "generationConfig": {
                     "temperature": 0.2,
                     "maxOutputTokens": 500,
+                    "responseMimeType": "application/json",
                 },
             },
             timeout=15.0,
         )
 
         if response.status_code == 200:
-            return response.json()["candidates"][0]["content"]["parts"][0][
+            response_text = response.json()["candidates"][0]["content"]["parts"][0][
                 "text"
             ].strip()
+            try:
+                diagnosis = json.loads(response_text)
+            except json.JSONDecodeError:
+                json_text = response_text
+                if json_text.startswith("```") and json_text.endswith("```"):
+                    json_text = json_text[3:-3].strip()
+                    if json_text.lower().startswith("json"):
+                        json_text = json_text[4:].strip()
+                try:
+                    diagnosis = json.loads(json_text)
+                except json.JSONDecodeError as error:
+                    raise ValueError(
+                        "Gemini hat kein gültiges JSON zurückgegeben."
+                    ) from error
+
+            required_keys = {"status", "kurzfazit", "beobachtung", "massnahme"}
+            if not isinstance(diagnosis, dict) or set(diagnosis) != required_keys:
+                raise ValueError(
+                    "Die Gemini-Antwort enthält nicht genau die erwarteten JSON-Schlüssel."
+                )
+            if not all(isinstance(diagnosis[key], str) for key in required_keys):
+                raise ValueError("Alle Diagnosewerte müssen Text sein.")
+            if diagnosis["status"] not in {"Optimal", "Warnung", "Kritisch"}:
+                raise ValueError("Gemini hat einen ungültigen Diagnosestatus zurückgegeben.")
+            return diagnosis
 
         last_error = f"API-Fehler {response.status_code}: {response.text}"
         if response.status_code not in retryable_statuses:
@@ -1585,7 +1619,42 @@ with diagnosis_tab:
         analysis_result = st.session_state.get(analysis_key)
         if analysis_result:
             st.markdown("#### Diagnoseergebnis")
-            st.markdown(analysis_result)
+            if isinstance(analysis_result, dict):
+                status_colors = {
+                    "Optimal": "#15803d",
+                    "Warnung": "#b45309",
+                    "Kritisch": "#b91c1c",
+                }
+                status = analysis_result["status"]
+                color = status_colors[status]
+                safe_status = html.escape(status)
+                safe_summary = html.escape(analysis_result["kurzfazit"])
+                st.markdown(
+                    (
+                        f'<div role="status" aria-label="Diagnosestatus {safe_status}" '
+                        f'style="background:{color}; color:#fff; border-radius:12px; '
+                        "padding:1.1rem 1.3rem; margin-bottom:1rem; "
+                        'box-shadow:0 6px 20px rgba(0,0,0,.18);">'
+                        f'<span style="display:inline-block; padding:.25rem .7rem; '
+                        "border-radius:999px; background:rgba(255,255,255,.18); "
+                        f'font-size:.8rem; font-weight:700;">{safe_status}</span>'
+                        f'<div style="font-size:1.15rem; font-weight:700; '
+                        f'margin-top:.65rem;">{safe_summary}</div></div>'
+                    ),
+                    unsafe_allow_html=True,
+                )
+
+                observation_col, measure_col = st.columns(2, gap="medium")
+                with observation_col:
+                    with st.container(border=True):
+                        st.markdown("#### 📊 Thermodynamische Beobachtung")
+                        st.write(analysis_result["beobachtung"])
+                with measure_col:
+                    with st.container(border=True):
+                        st.markdown("#### 🛠️ Ursache & HKLS-Maßnahme")
+                        st.write(analysis_result["massnahme"])
+            elif isinstance(analysis_result, str):
+                st.markdown(analysis_result)
         elif not analysis_clicked:
             st.info(
                 "Klicken Sie auf „Heizdiagramm mit KI analysieren“, um die "
