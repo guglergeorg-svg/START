@@ -343,7 +343,20 @@ st.markdown("""
         }
 
         section[data-testid="stSidebar"] > div {
-            padding: 1.6rem 1rem 2rem;
+            padding: 1.8rem 1.15rem 2rem;
+        }
+
+        section[data-testid="stSidebar"] [data-testid="stSelectbox"] {
+            margin-bottom: 1.2rem;
+        }
+
+        section[data-testid="stSidebar"] hr {
+            margin: 1.35rem 0;
+            border-color: #dfe7df;
+        }
+
+        section[data-testid="stSidebar"] [data-testid="stToggle"] {
+            margin-top: .65rem;
         }
 
         section[data-testid="stSidebar"] h1,
@@ -601,6 +614,10 @@ st.markdown("""
             background: var(--paper);
         }
 
+        [data-testid="stTabs"] [role="tabpanel"] {
+            padding-top: 1.25rem;
+        }
+
         [data-testid="stTabs"] [role="tablist"] {
             gap: .55rem;
             border-bottom: 1px solid #e1e8e2;
@@ -648,9 +665,35 @@ st.markdown("""
             color: var(--ink);
         }
 
+        [class*="st-key-diagnostic_alert_kritisch_"] [data-testid="stAlert"],
+        [class*="st-key-diagnostic_alert_kritisch_"] [data-testid="stAlert"] > div,
+        [class*="st-key-diagnostic_alert_hygiene_alarm_"] [data-testid="stAlert"],
+        [class*="st-key-diagnostic_alert_hygiene_alarm_"] [data-testid="stAlert"] > div {
+            background-color: #991b1b !important;
+            border-color: #7f1d1d !important;
+        }
+
+        [class*="st-key-diagnostic_alert_kritisch_"] [data-testid="stAlert"] *,
+        [class*="st-key-diagnostic_alert_hygiene_alarm_"] [data-testid="stAlert"] * {
+            color: #fff !important;
+        }
+
+        [class*="st-key-diagnostic_alert_kritisch_"] [data-testid="stAlert"] svg,
+        [class*="st-key-diagnostic_alert_hygiene_alarm_"] [data-testid="stAlert"] svg {
+            fill: #fff !important;
+            stroke: #fff !important;
+        }
+
         .st-key-portfolio_loss_metric [data-testid="stMetricValue"] {
             font-size: clamp(1.6rem, 2.1vw, 2rem);
             font-weight: 760;
+        }
+
+        [data-testid="stPydeckChart"] {
+            width: 100% !important;
+            max-width: 100%;
+            border-radius: 12px;
+            background: #fff;
         }
 
         [data-baseweb="select"] > div,
@@ -1109,18 +1152,20 @@ with diagnosis_tab:
             '<p class="section-kicker">Erkannte Abweichungen und empfohlene Maßnahmen</p>',
             unsafe_allow_html=True,
         )
-        for issue in issues:
+        for issue_index, issue in enumerate(issues):
             message = (
                 f"**[{issue['severity']}] {issue['title']}**\n\n"
                 f"{issue['desc']}\n\n"
                 f"👉 **Empfohlene Maßnahme:** {issue['action']}"
             )
-            if issue["severity"] in {"KRITISCH", "HYGIENE-ALARM"}:
-                st.error(message)
-            elif issue["severity"] == "WARNUNG":
-                st.warning(message)
-            else:
-                st.success(message)
+            alert_variant = issue["severity"].lower().replace("-", "_")
+            with st.container(key=f"diagnostic_alert_{alert_variant}_{issue_index}"):
+                if issue["severity"] in {"KRITISCH", "HYGIENE-ALARM"}:
+                    st.error(message)
+                elif issue["severity"] == "WARNUNG":
+                    st.warning(message)
+                else:
+                    st.success(message)
 
     with right_col:
         st.header("Installateur-Ticket")
@@ -1343,7 +1388,7 @@ with portfolio_tab:
             ),
             map_style=(
                 "https://basemaps.cartocdn.com/gl/"
-                "dark-matter-gl-style/style.json"
+                "positron-gl-style/style.json"
             ),
             tooltip={
                 "html": (
