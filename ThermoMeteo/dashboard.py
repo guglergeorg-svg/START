@@ -6,7 +6,6 @@ import numpy as np
 import httpx
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-import time
 from datetime import datetime, timedelta
 
 from postgrest.exceptions import APIError
@@ -1030,17 +1029,140 @@ def pair_prototype_sensor_readings(measurements: pd.DataFrame) -> pd.DataFrame:
     )
 
 
+def _local_heating_diagnosis(
+    recent_data: pd.DataFrame, fallback_reason: str
+) -> dict[str, str]:
+    recent_data = recent_data.reset_index(drop=True)
+
+    def numeric_series(prefix: str) -> pd.Series:
+        for column_index, column_name in enumerate(recent_data.columns):
+            if str(column_name).casefold().startswith(prefix.casefold()):
+                values = pd.to_numeric(
+                    recent_data.iloc[:, column_index],
+                    errors="coerce",
+                ).replace([np.inf, -np.inf], np.nan).dropna()
+                if not values.empty:
+                    return values
+        return pd.Series(dtype="float64")
+
+    supply = numeric_series("Vorlauf_C")
+    return_temp = numeric_series("Ruecklauf_C")
+    spread = numeric_series("Spreizung_K")
+    spread_is_derived = spread.empty and not supply.empty and not return_temp.empty
+    if spread_is_derived:
+        spread = supply.sub(return_temp).dropna()
+
+    def mean_value(values: pd.Series) -> float | None:
+        return float(values.mean()) if not values.empty else None
+
+    supply_mean = mean_value(supply)
+    return_mean = mean_value(return_temp)
+    spread_mean = mean_value(spread)
+    temperature_jumps = []
+    for values in (supply, return_temp, spread):
+        jump = values.diff().abs().max()
+        if pd.notna(jump):
+            temperature_jumps.append(float(jump))
+    max_jump = max(temperature_jumps) if temperature_jumps else None
+
+    provisional = any(
+        "vorläufig" in str(column_name).casefold()
+        for column_name in recent_data.columns
+    )
+    complete = all(
+        value is not None for value in (supply_mean, return_mean, spread_mean)
+    ) and max_jump is not None
+
+    if provisional or not complete:
+        status = "Warnung"
+        summary = "Die lokale Auswertung ist wegen vorläufiger oder unvollständiger Daten nicht belastbar."
+        measure = (
+            "Sensorzuordnung und Anschluss der Fühler verifizieren; danach "
+            "die Messwerte mit den anlagenspezifischen Auslegungswerten vergleichen."
+        )
+    elif max_jump >= 10:
+        status = "Kritisch"
+        summary = "Die Messreihe enthält einen starken Temperatursprung."
+        measure = (
+            "Temperaturfühler, Verkabelung und Regelungsverlauf zeitnah prüfen "
+            "und den Sprung mit einer unabhängigen Messung abgleichen."
+        )
+    elif spread_mean < 3 or spread_mean > 15 or max_jump >= 5:
+        status = "Warnung"
+        summary = "Mindestens eine lokale Kennzahl liegt außerhalb allgemeiner Orientierungswerte."
+        measure = (
+            "Hydraulik, Volumenstrom und Sensorik prüfen; die Spreizung mit "
+            "den hersteller- und anlagenspezifischen Sollwerten abgleichen."
+        )
+    else:
+        status = "Optimal"
+        summary = "Die lokalen Kennzahlen zeigen im beobachteten Zeitraum keine auffälligen Abweichungen."
+        measure = (
+            "Betrieb weiter überwachen und die generischen Orientierungswerte "
+            "regelmäßig mit der Anlagenauslegung abgleichen."
+        )
+
+    def format_value(value: float | None, unit: str) -> str:
+        return f"{value:.1f} {unit}" if value is not None else "nicht verfügbar"
+
+    spread_source = (
+        "berechnet aus Vorlauf minus Rücklauf"
+        if spread_is_derived
+        else "Messreihe"
+    )
+    observation = (
+        f"Lokale Auswertung von {len(recent_data)} Messpunkten; "
+        f"Vorlauf-Mittel {format_value(supply_mean, '°C')}, "
+        f"Rücklauf-Mittel {format_value(return_mean, '°C')}, "
+        f"Spreizung-Mittel {format_value(spread_mean, 'K')} ({spread_source}), "
+        f"größte Änderung (Vorlauf/Rücklauf/Spreizung) "
+        f"{format_value(max_jump, '°C')}. "
+        f"Auslöser: {fallback_reason}. "
+        "Generische Orientierung: Spreizung 3–15 K, Warnung ab 5 °C und "
+        "kritisch ab 10 °C Sprung; projektspezifische Sollwerte können abweichen."
+    )
+    if provisional:
+        observation += " Die Sensorzuordnung ist vorläufig; Befunde sind nicht verifiziert."
+
+    return {
+        "status": status,
+        "kurzfazit": summary,
+        "beobachtung": observation,
+        "massnahme": measure,
+    }
+
+
 def analyze_heating_chart(df: pd.DataFrame) -> dict[str, str]:
-    if df.empty:
-        raise ValueError("Es liegen keine Heizungsdaten für die Analyse vor.")
-    if not isinstance(df.index, pd.DatetimeIndex):
-        raise ValueError("Die Heizungsdaten benötigen einen Zeitstempel-Index.")
+    if not isinstance(df, pd.DataFrame):
+        return _local_heating_diagnosis(
+            pd.DataFrame(),
+            "keine gültigen Heizungsdaten",
+        )
 
-    api_key = st.secrets["GEMINI_API_KEY"]
+    recent_data = df.tail(24)
+    if isinstance(recent_data.index, pd.DatetimeIndex):
+        recent_data = recent_data.sort_index()
+    if recent_data.empty:
+        return _local_heating_diagnosis(recent_data, "keine Messpunkte vorhanden")
+    if not isinstance(recent_data.index, pd.DatetimeIndex):
+        return _local_heating_diagnosis(
+            recent_data,
+            "Zeitstempelindex ist nicht auswertbar",
+        )
+
+    try:
+        api_key = st.secrets["GEMINI_API_KEY"]
+    except (FileNotFoundError, KeyError):
+        return _local_heating_diagnosis(
+            recent_data,
+            "Gemini-API-Schlüssel ist nicht konfiguriert",
+        )
     if not api_key:
-        raise ValueError("Der Gemini-API-Key ist leer.")
+        return _local_heating_diagnosis(
+            recent_data,
+            "Gemini-API-Schlüssel ist leer",
+        )
 
-    recent_data = df.sort_index().tail(20)
     csv_data = recent_data.to_csv(
         index=True,
         index_label="Timestamp",
@@ -1051,14 +1173,10 @@ def analyze_heating_chart(df: pd.DataFrame) -> dict[str, str]:
         "für Vorlauf und Rücklauf auf Takten des Wärmeerzeugers, eine zu "
         "geringe Spreizung (Delta T) sowie plötzliche Temperaturabfälle und "
         "mögliche Sensorstörungen. Nutze ausschließlich die bereitgestellten "
-        "Messwerte und erfinde keine Ursachen oder Messwerte. Antworte auf "
-        "Deutsch ausschließlich mit einem validen JSON-Objekt ohne Markdown "
-        "und genau diesen vier Schlüsseln: "
-        '{"status":"Optimal | Warnung | Kritisch", '
-        '"kurzfazit":"1 prägnanter Satz zum Gesamtzustand", '
-        '"beobachtung":"Konkrete Analyse der Vorlauf-/Rücklaufwerte und Spreizung", '
-        '"massnahme":"Konkrete HKLS-Handlungsempfehlung"}. '
-        "Der Wert von status muss exakt Optimal, Warnung oder Kritisch sein. "
+        "Messwerte und erfinde keine Ursachen oder Messwerte. "
+        "Gib ausschließlich ein valides JSON-Objekt auf Deutsch mit genau "
+        'den Schlüsseln "status", "kurzfazit", "beobachtung" und "massnahme" '
+        'zurück. "status" muss exakt "Optimal", "Warnung" oder "Kritisch" sein. '
         "Wenn die Daten für eine belastbare Diagnose nicht ausreichen, sage "
         "das ausdrücklich."
     )
@@ -1070,35 +1188,82 @@ def analyze_heating_chart(df: pd.DataFrame) -> dict[str, str]:
             "Delta T als nicht verifiziert und stelle keine reale Anlagenstörung fest."
         )
 
-    models = [
-        "gemini-3.8-flash",
-        "gemini-3.8-flash-lite",
-        "gemini-2.5-pro",
-        "gemini-2.0-flash",
-    ]
-    last_error = ""
-    retryable_statuses = (429, 500, 503, 404)
-
-    for model_index, model in enumerate(models):
-        response = httpx.post(
-            "https://generativelanguage.googleapis.com/v1beta/models/"
-            f"{model}:generateContent",
+    try:
+        models_response = httpx.get(
+            "https://generativelanguage.googleapis.com/v1beta/models",
             params={"key": api_key},
-            json={
-                "systemInstruction": {"parts": [{"text": system_instruction}]},
-                "contents": [
-                    {"parts": [{"text": f"Heizungsdaten als CSV:\n{csv_data}"}]}
-                ],
-                "generationConfig": {
-                    "temperature": 0.2,
-                    "maxOutputTokens": 500,
-                    "responseMimeType": "application/json",
-                },
-            },
-            timeout=15.0,
+            timeout=5.0,
+        )
+    except httpx.HTTPError:
+        return _local_heating_diagnosis(
+            recent_data,
+            "Gemini-Modellliste wegen Netzwerkfehler oder Timeout nicht erreichbar",
+        )
+    if models_response.status_code != 200:
+        return _local_heating_diagnosis(
+            recent_data,
+            f"Gemini-Modellliste antwortete mit HTTP {models_response.status_code}",
+        )
+    try:
+        available_models = models_response.json().get("models", [])
+    except (AttributeError, ValueError):
+        return _local_heating_diagnosis(
+            recent_data,
+            "Gemini-Modellliste hatte ein ungültiges Antwortformat",
+        )
+    if not isinstance(available_models, list):
+        return _local_heating_diagnosis(
+            recent_data,
+            "Gemini-Modellliste hatte ein ungültiges Antwortformat",
         )
 
-        if response.status_code == 200:
+    models = []
+    for model in available_models:
+        if not isinstance(model, dict):
+            continue
+        name = model.get("name")
+        methods = model.get("supportedGenerationMethods", [])
+        if (
+            isinstance(name, str)
+            and "flash" in name.casefold()
+            and isinstance(methods, list)
+            and "generateContent" in methods
+        ):
+            models.append(name.rsplit("/", 1)[-1])
+    if not models:
+        return _local_heating_diagnosis(
+            recent_data,
+            "kein verfügbares Flash-Modell mit generateContent gefunden",
+        )
+
+    last_failure = "Gemini lieferte keine auswertbare Diagnose"
+    for model in models[:2]:
+        try:
+            response = httpx.post(
+                "https://generativelanguage.googleapis.com/v1beta/models/"
+                f"{model}:generateContent",
+                params={"key": api_key},
+                json={
+                    "systemInstruction": {"parts": [{"text": system_instruction}]},
+                    "contents": [
+                        {"parts": [{"text": f"Heizungsdaten als CSV:\n{csv_data}"}]}
+                    ],
+                    "generationConfig": {
+                        "temperature": 0.2,
+                        "maxOutputTokens": 500,
+                        "responseMimeType": "application/json",
+                    },
+                },
+                timeout=8.0,
+            )
+        except httpx.HTTPError:
+            last_failure = "Gemini-Anfrage wegen Netzwerkfehler oder Timeout fehlgeschlagen"
+            continue
+        if response.status_code != 200:
+            last_failure = f"Gemini-API antwortete mit HTTP {response.status_code}"
+            continue
+
+        try:
             response_text = response.json()["candidates"][0]["content"]["parts"][0][
                 "text"
             ].strip()
@@ -1110,31 +1275,20 @@ def analyze_heating_chart(df: pd.DataFrame) -> dict[str, str]:
                     json_text = json_text[3:-3].strip()
                     if json_text.lower().startswith("json"):
                         json_text = json_text[4:].strip()
-                try:
-                    diagnosis = json.loads(json_text)
-                except json.JSONDecodeError as error:
-                    raise ValueError(
-                        "Gemini hat kein gültiges JSON zurückgegeben."
-                    ) from error
+                diagnosis = json.loads(json_text)
 
             required_keys = {"status", "kurzfazit", "beobachtung", "massnahme"}
             if not isinstance(diagnosis, dict) or set(diagnosis) != required_keys:
-                raise ValueError(
-                    "Die Gemini-Antwort enthält nicht genau die erwarteten JSON-Schlüssel."
-                )
+                raise ValueError("Gemini-Antwort hat nicht die erwartete JSON-Struktur")
             if not all(isinstance(diagnosis[key], str) for key in required_keys):
-                raise ValueError("Alle Diagnosewerte müssen Text sein.")
+                raise ValueError("Gemini-Antwort enthält nicht-textuelle Diagnosewerte")
             if diagnosis["status"] not in {"Optimal", "Warnung", "Kritisch"}:
-                raise ValueError("Gemini hat einen ungültigen Diagnosestatus zurückgegeben.")
+                raise ValueError("Gemini-Antwort enthält einen ungültigen Status")
             return diagnosis
+        except (IndexError, KeyError, TypeError, ValueError):
+            last_failure = "Gemini-Antwort hatte kein gültiges Diagnose-JSON"
 
-        last_error = f"API-Fehler {response.status_code}: {response.text}"
-        if response.status_code not in retryable_statuses:
-            raise ValueError(last_error)
-        if model_index < len(models) - 1:
-            time.sleep(1)
-
-    raise ValueError(last_error)
+    return _local_heating_diagnosis(recent_data, last_failure)
 
 
 # --- 1. REALISTISCHE HKLS-DATENGENERIERUNG ---
@@ -1572,9 +1726,9 @@ with diagnosis_tab:
             unsafe_allow_html=True,
         )
         st.caption(
-            "Beim Klick werden die letzten 20 Messpunkte an Google Gemini "
-            "gesendet; bei Rate-Limit, Überlastung oder nicht verfügbarem "
-            "Modell wird automatisch ein Fallback-Modell versucht."
+            "Beim Klick werden die letzten 24 Messpunkte an Google Gemini "
+            "gesendet; bei API-Ausfällen wird eine lokale Kennzahlenanalyse "
+            "angezeigt."
         )
         analysis_key = (
             f"heating_ai_analysis_{st.session_state['selected_location_index']}"
@@ -1614,7 +1768,19 @@ with diagnosis_tab:
                         analysis_df
                     )
             except Exception as error:
-                st.error(f"Die KI-Analyse ist fehlgeschlagen: {error}")
+                fallback_data = (
+                    df.tail(24) if isinstance(df, pd.DataFrame) else pd.DataFrame()
+                )
+                if isinstance(fallback_data.index, pd.DatetimeIndex):
+                    fallback_data = fallback_data.sort_index()
+                st.session_state[analysis_key] = _local_heating_diagnosis(
+                    fallback_data,
+                    f"Datenaufbereitung fehlgeschlagen ({type(error).__name__})",
+                )
+                st.warning(
+                    "Die KI-Auswertung war nicht verfügbar; lokale Kennzahlen "
+                    "werden angezeigt."
+                )
 
         analysis_result = st.session_state.get(analysis_key)
         if analysis_result:
@@ -1647,11 +1813,11 @@ with diagnosis_tab:
                 observation_col, measure_col = st.columns(2, gap="medium")
                 with observation_col:
                     with st.container(border=True):
-                        st.markdown("#### 📊 Thermodynamische Beobachtung")
+                        st.markdown("#### 📊 Beobachtung")
                         st.write(analysis_result["beobachtung"])
                 with measure_col:
                     with st.container(border=True):
-                        st.markdown("#### 🛠️ Ursache & HKLS-Maßnahme")
+                        st.markdown("#### 🛠️ Ursache & Maßnahme")
                         st.write(analysis_result["massnahme"])
             elif isinstance(analysis_result, str):
                 st.markdown(analysis_result)
