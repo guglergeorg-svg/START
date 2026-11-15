@@ -411,6 +411,10 @@ st.markdown("""
             margin-top: .65rem;
         }
 
+        .st-key-mobile_location_picker {
+            display: none;
+        }
+
         section[data-testid="stSidebar"] h1,
         section[data-testid="stSidebar"] h2,
         section[data-testid="stSidebar"] h3 {
@@ -856,6 +860,29 @@ st.markdown("""
             }
         }
 
+        @media (max-width: 768px) {
+            .st-key-mobile_location_picker {
+                display: block;
+                position: relative;
+                z-index: 2;
+                margin-bottom: .85rem;
+                padding: .7rem .8rem .35rem;
+                background: #fff;
+                border: 1px solid #dfe7df;
+                border-radius: 14px;
+            }
+
+            .st-key-mobile_location_picker [data-testid="stSelectbox"] {
+                width: 100%;
+                margin: 0;
+            }
+
+            .st-key-mobile_location_picker [data-baseweb="select"] > div {
+                min-height: 48px;
+                border-radius: 10px;
+            }
+        }
+
         @media (prefers-reduced-motion: reduce) {
             *,
             *::before,
@@ -1128,11 +1155,21 @@ available_locations = portfolio_locations + [prototype_location]
 
 
 def sync_location_selection(widget_key: str) -> None:
-    st.session_state["selected_location_index"] = st.session_state[widget_key]
+    selected_index = st.session_state[widget_key]
+    st.session_state["selected_location_index"] = selected_index
+    st.session_state["sidebar_location_index"] = selected_index
+    st.session_state["mobile_location_index"] = selected_index
 
 
-for state_key in ("selected_location_index", "sidebar_location_index"):
-    st.session_state.setdefault(state_key, 0)
+st.session_state.setdefault("selected_location_index", 0)
+st.session_state.setdefault(
+    "sidebar_location_index",
+    st.session_state["selected_location_index"],
+)
+st.session_state.setdefault(
+    "mobile_location_index",
+    st.session_state["selected_location_index"],
+)
 
 st.sidebar.selectbox(
     "Liegenschaft auswählen:",
@@ -1251,6 +1288,16 @@ for location in portfolio_locations:
         "color_b": marker_color[2],
     })
 portfolio_df = pd.DataFrame(portfolio_rows)
+
+with st.container(key="mobile_location_picker"):
+    st.selectbox(
+        "Anlage wechseln",
+        options=range(len(available_locations)),
+        format_func=lambda index: available_locations[index]["building"],
+        key="mobile_location_index",
+        on_change=sync_location_selection,
+        args=("mobile_location_index",),
+    )
 
 # --- DETAILANSICHTEN ---
 portfolio_tab, details_tab, diagnosis_tab, telemetry_tab = st.tabs([
