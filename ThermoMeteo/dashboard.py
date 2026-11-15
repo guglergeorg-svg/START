@@ -6,8 +6,6 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from datetime import datetime, timedelta
 
-from google import genai
-from google.genai import types
 from postgrest.exceptions import APIError
 from site_pages import render_site_footer
 from supabase import Client, create_client
@@ -1039,7 +1037,7 @@ def analyze_heating_chart(df: pd.DataFrame) -> str:
     if not api_key:
         raise ValueError("Der Gemini-API-Key ist leer.")
 
-    recent_data = df.sort_index().tail(24)
+    recent_data = df.sort_index().tail(20)
     csv_data = recent_data.to_csv(
         index=True,
         index_label="Timestamp",
@@ -1063,24 +1061,28 @@ def analyze_heating_chart(df: pd.DataFrame) -> str:
             "Delta T als nicht verifiziert und stelle keine reale Anlagenstörung fest."
         )
 
-    client = genai.Client(
-        api_key=api_key,
-        http_options=types.HttpOptions(timeout=60000),
-    )
-    response = client.models.generate_content(
-        model="gemini-3.8-flash",
-        contents=f"Heizungsdaten als CSV:\n{csv_data}",
-        config=types.GenerateContentConfig(
-            system_instruction=system_instruction,
-            temperature=0.2,
-            thinking_config=types.ThinkingConfig(thinking_budget=0),
-            max_output_tokens=600,
-        ),
+    response = httpx.post(
+        "https://generativelanguage.googleapis.com/v1beta/models/"
+        "gemini-3.8-flash:generateContent",
+        params={"key": api_key},
+        json={
+            "systemInstruction": {"parts": [{"text": system_instruction}]},
+            "contents": [
+                {"parts": [{"text": f"Heizungsdaten als CSV:\n{csv_data}"}]}
+            ],
+            "generationConfig": {
+                "temperature": 0.2,
+                "maxOutputTokens": 500,
+            },
+        },
+        timeout=15.0,
     )
 
-    if not response.text or not response.text.strip():
-        raise ValueError("Gemini hat keine textuelle Diagnose zurückgegeben.")
-    return response.text.strip()
+    if response.status_code != 200:
+        raise ValueError(
+            f"API-Fehler {response.status_code}: {response.text}"
+        )
+    return response.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
 
 
 # --- 1. REALISTISCHE HKLS-DATENGENERIERUNG ---
