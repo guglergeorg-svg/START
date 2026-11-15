@@ -125,6 +125,55 @@ st.markdown("""
         border: 1px solid rgba(148, 163, 184, 0.16);
     }
 
+    [class*="st-key-diagnostic_alert_kritisch_"] [data-testid="stAlert"],
+    [class*="st-key-diagnostic_alert_kritisch_"] [data-testid="stAlert"] > div,
+    [class*="st-key-diagnostic_alert_hygiene_alarm_"] [data-testid="stAlert"],
+    [class*="st-key-diagnostic_alert_hygiene_alarm_"] [data-testid="stAlert"] > div {
+        background-color: #991b1b !important;
+        border-color: #7f1d1d !important;
+    }
+
+    [class*="st-key-diagnostic_alert_kritisch_"] [data-testid="stAlert"] *,
+    [class*="st-key-diagnostic_alert_hygiene_alarm_"] [data-testid="stAlert"] * {
+        color: #fff !important;
+    }
+
+    [class*="st-key-diagnostic_alert_kritisch_"] [data-testid="stAlert"] svg,
+    [class*="st-key-diagnostic_alert_hygiene_alarm_"] [data-testid="stAlert"] svg {
+        fill: #fff !important;
+        stroke: #fff !important;
+    }
+
+    [class*="st-key-diagnostic_alert_warnung_"] [data-testid="stAlert"],
+    [class*="st-key-diagnostic_alert_warnung_"] [data-testid="stAlert"] > div {
+        background-color: #fffbeb !important;
+        border-color: #fcd34d !important;
+    }
+
+    [class*="st-key-diagnostic_alert_warnung_"] [data-testid="stAlert"] * {
+        color: #78350f !important;
+    }
+
+    [class*="st-key-diagnostic_alert_warnung_"] [data-testid="stAlert"] svg {
+        fill: #b45309 !important;
+        stroke: #b45309 !important;
+    }
+
+    [class*="st-key-diagnostic_alert_ok_"] [data-testid="stAlert"],
+    [class*="st-key-diagnostic_alert_ok_"] [data-testid="stAlert"] > div {
+        background-color: #ecfdf5 !important;
+        border-color: #86efac !important;
+    }
+
+    [class*="st-key-diagnostic_alert_ok_"] [data-testid="stAlert"] * {
+        color: #14532d !important;
+    }
+
+    [class*="st-key-diagnostic_alert_ok_"] [data-testid="stAlert"] svg {
+        fill: #15803d !important;
+        stroke: #15803d !important;
+    }
+
     [data-testid="stPlotlyChart"] {
         overflow: hidden;
         border: 1px solid rgba(148, 163, 184, 0.14);
@@ -666,25 +715,6 @@ st.markdown("""
         [data-testid="stAlert"] [data-testid="stMarkdownContainer"],
         [data-testid="stAlert"] [data-testid="stMarkdownContainer"] p {
             color: var(--ink);
-        }
-
-        [class*="st-key-diagnostic_alert_kritisch_"] [data-testid="stAlert"],
-        [class*="st-key-diagnostic_alert_kritisch_"] [data-testid="stAlert"] > div,
-        [class*="st-key-diagnostic_alert_hygiene_alarm_"] [data-testid="stAlert"],
-        [class*="st-key-diagnostic_alert_hygiene_alarm_"] [data-testid="stAlert"] > div {
-            background-color: #991b1b !important;
-            border-color: #7f1d1d !important;
-        }
-
-        [class*="st-key-diagnostic_alert_kritisch_"] [data-testid="stAlert"] *,
-        [class*="st-key-diagnostic_alert_hygiene_alarm_"] [data-testid="stAlert"] * {
-            color: #fff !important;
-        }
-
-        [class*="st-key-diagnostic_alert_kritisch_"] [data-testid="stAlert"] svg,
-        [class*="st-key-diagnostic_alert_hygiene_alarm_"] [data-testid="stAlert"] svg {
-            fill: #fff !important;
-            stroke: #fff !important;
         }
 
         .st-key-portfolio_loss_metric [data-testid="stMetricValue"] {
