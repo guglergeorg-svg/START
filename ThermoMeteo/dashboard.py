@@ -1484,10 +1484,20 @@ with telemetry_tab:
     if is_supabase_prototype:
         st.header("Supabase-Temperaturverlauf")
         st.markdown(
-            '<p class="section-kicker">Originalmessungen aus Supabase · Vorlauf/Rücklauf beliebig und vorläufig zugeordnet</p>',
+            '<p class="section-kicker">Originalmessungen aus Supabase · Spreizung aus vorläufig zugeordneten Fühlern, bis zum Anschluss nur ein Orientierungswert</p>',
             unsafe_allow_html=True,
         )
-        fig = go.Figure()
+        fig = make_subplots(
+            rows=2,
+            cols=1,
+            shared_xaxes=True,
+            vertical_spacing=0.08,
+            row_heights=[0.7, 0.3],
+            subplot_titles=(
+                "Temperaturen · vorläufige Sensorzuordnung",
+                "Spreizung ΔT (K) · vorläufig",
+            ),
+        )
         sensor_colors = ["#b42318", "#1d4ed8", "#b45309", "#047857", "#475569"]
         for sensor_index, (sensor_id, sensor_data) in enumerate(
             chart_df.groupby("sensor_id", sort=True)
@@ -1502,11 +1512,68 @@ with telemetry_tab:
                         color=sensor_colors[sensor_index % len(sensor_colors)],
                         width=2,
                     ),
-                )
+                ),
+                row=1,
+                col=1,
             )
+
+        sensor_ids = sorted(df["sensor_id"].unique())
+        if len(sensor_ids) >= 2:
+            vorlauf_data = (
+                df.loc[df["sensor_id"] == sensor_ids[0], ["Timestamp", "Temperatur_C"]]
+                .rename(columns={"Temperatur_C": "Vorlauf_C"})
+                .sort_values("Timestamp")
+            )
+            ruecklauf_data = (
+                df.loc[df["sensor_id"] == sensor_ids[1], ["Timestamp", "Temperatur_C"]]
+                .rename(columns={"Temperatur_C": "Ruecklauf_C"})
+                .sort_values("Timestamp")
+            )
+            spread_df = pd.merge_asof(
+                vorlauf_data,
+                ruecklauf_data,
+                on="Timestamp",
+                direction="nearest",
+                tolerance=pd.Timedelta(seconds=3),
+            ).dropna(subset=["Ruecklauf_C"])
+            spread_df["Spreizung_K"] = (
+                spread_df["Vorlauf_C"] - spread_df["Ruecklauf_C"]
+            )
+            if not chart_df.empty:
+                spread_df = spread_df[
+                    spread_df["Timestamp"].between(
+                        chart_df["Timestamp"].min(),
+                        chart_df["Timestamp"].max(),
+                    )
+                ]
+            else:
+                spread_df = spread_df.iloc[0:0]
+
+            if spread_df.empty:
+                st.info(
+                    "Für den gewählten Zeitraum gibt es keine zeitlich passenden "
+                    "Messpaare für die Spreizung."
+                )
+            else:
+                fig.add_trace(
+                    go.Scatter(
+                        x=spread_df["Timestamp"],
+                        y=spread_df["Spreizung_K"],
+                        name="Spreizung ΔT (K, vorläufig)",
+                        mode="lines",
+                        line=dict(color="#047857", width=2),
+                    ),
+                    row=2,
+                    col=1,
+                )
+        else:
+            st.info("Für die Spreizung werden mindestens zwei Sensoren benötigt.")
+
+        fig.update_yaxes(title_text="Temperatur (°C)", row=1, col=1)
+        fig.update_yaxes(title_text="ΔT (K)", row=2, col=1)
         chart_alt = (
-            "Temperaturmessungen der Supabase-Sensoren "
-            f"über {len(chart_df)} Messpunkte"
+            "Temperaturmessungen und vorläufig berechnete Spreizung der "
+            f"Supabase-Sensoren über {len(chart_df)} Messpunkte"
         )
     else:
         st.header("Thermodynamischer Zeitverlauf")
