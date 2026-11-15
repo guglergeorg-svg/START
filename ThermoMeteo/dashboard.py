@@ -748,6 +748,19 @@ st.markdown("""
             color: var(--ink);
         }
 
+        [data-testid="stWidgetLabel"] p,
+        label {
+            color: #172a27 !important;
+            font-weight: 600;
+        }
+
+        [data-baseweb="popover"] [role="listbox"],
+        [data-baseweb="popover"] [role="option"],
+        [data-baseweb="popover"] [role="option"] * {
+            background: #fff !important;
+            color: #172a27 !important;
+        }
+
         [data-testid="stRadio"] label {
             color: var(--ink);
         }
@@ -1030,7 +1043,8 @@ def pair_prototype_sensor_readings(measurements: pd.DataFrame) -> pd.DataFrame:
 
 
 def _local_heating_diagnosis(
-    recent_data: pd.DataFrame, fallback_reason: str
+    recent_data: pd.DataFrame,
+    estimated_monthly_loss_eur: int | float | None = None,
 ) -> dict[str, str]:
     recent_data = recent_data.reset_index(drop=True)
 
@@ -1048,8 +1062,7 @@ def _local_heating_diagnosis(
     supply = numeric_series("Vorlauf_C")
     return_temp = numeric_series("Ruecklauf_C")
     spread = numeric_series("Spreizung_K")
-    spread_is_derived = spread.empty and not supply.empty and not return_temp.empty
-    if spread_is_derived:
+    if spread.empty and not supply.empty and not return_temp.empty:
         spread = supply.sub(return_temp).dropna()
 
     def mean_value(values: pd.Series) -> float | None:
@@ -1075,54 +1088,74 @@ def _local_heating_diagnosis(
 
     if provisional or not complete:
         status = "Warnung"
-        summary = "Die lokale Auswertung ist wegen vorläufiger oder unvollständiger Daten nicht belastbar."
+        summary = (
+            "Die Temperaturfühler sind noch nicht eindeutig zugeordnet."
+            if provisional
+            else "Die vorhandenen Werte reichen noch nicht für eine sichere Einschätzung."
+        )
         measure = (
-            "Sensorzuordnung und Anschluss der Fühler verifizieren; danach "
-            "die Messwerte mit den anlagenspezifischen Auslegungswerten vergleichen."
+            "Bitte den Installateur die Fühler anschließen und eindeutig dem "
+            "warmen Hinweg und dem kühleren Rückweg zuordnen lassen. Danach "
+            "soll die Heizung erneut geprüft werden."
+            if provisional
+            else "Bitte den Installateur die Temperaturfühler und die fehlenden "
+            "Messwerte prüfen lassen, bevor über eine Reparatur entschieden wird."
         )
     elif max_jump >= 10:
         status = "Kritisch"
-        summary = "Die Messreihe enthält einen starken Temperatursprung."
+        summary = "Die Temperatur hat sich ungewöhnlich stark verändert."
         measure = (
-            "Temperaturfühler, Verkabelung und Regelungsverlauf zeitnah prüfen "
-            "und den Sprung mit einer unabhängigen Messung abgleichen."
+            "Bitte den Installateur die Temperaturfühler und die Heizungssteuerung "
+            "zeitnah prüfen und die auffällige Änderung vor Ort nachmessen lassen."
         )
     elif spread_mean < 3 or spread_mean > 15 or max_jump >= 5:
         status = "Warnung"
-        summary = "Mindestens eine lokale Kennzahl liegt außerhalb allgemeiner Orientierungswerte."
+        summary = "Die Temperaturen weichen von einem üblichen Heizbetrieb ab."
         measure = (
-            "Hydraulik, Volumenstrom und Sensorik prüfen; die Spreizung mit "
-            "den hersteller- und anlagenspezifischen Sollwerten abgleichen."
+            "Bitte den Installateur prüfen lassen, ob genug Heizwasser durch "
+            "die Anlage fließt und ob die Temperaturfühler richtig sitzen."
         )
     else:
         status = "Optimal"
-        summary = "Die lokalen Kennzahlen zeigen im beobachteten Zeitraum keine auffälligen Abweichungen."
+        summary = "Die Heizung arbeitet nach den vorhandenen Werten unauffällig."
         measure = (
-            "Betrieb weiter überwachen und die generischen Orientierungswerte "
-            "regelmäßig mit der Anlagenauslegung abgleichen."
+            "Die Anlage wie bisher betreiben und die Temperaturen regelmäßig "
+            "überprüfen lassen."
         )
 
     def format_value(value: float | None, unit: str) -> str:
         return f"{value:.1f} {unit}" if value is not None else "nicht verfügbar"
 
-    spread_source = (
-        "berechnet aus Vorlauf minus Rücklauf"
-        if spread_is_derived
-        else "Messreihe"
-    )
-    observation = (
-        f"Lokale Auswertung von {len(recent_data)} Messpunkten; "
-        f"Vorlauf-Mittel {format_value(supply_mean, '°C')}, "
-        f"Rücklauf-Mittel {format_value(return_mean, '°C')}, "
-        f"Spreizung-Mittel {format_value(spread_mean, 'K')} ({spread_source}), "
-        f"größte Änderung (Vorlauf/Rücklauf/Spreizung) "
-        f"{format_value(max_jump, '°C')}. "
-        f"Auslöser: {fallback_reason}. "
-        "Generische Orientierung: Spreizung 3–15 K, Warnung ab 5 °C und "
-        "kritisch ab 10 °C Sprung; projektspezifische Sollwerte können abweichen."
-    )
+    if estimated_monthly_loss_eur and estimated_monthly_loss_eur > 0:
+        formatted_loss = f"{estimated_monthly_loss_eur:,.0f}".replace(",", ".")
+        cost_note = (
+            f"Der zusätzliche Energieverbrauch kostet nach einer groben "
+            f"Schätzung etwa {formatted_loss} Euro im Monat."
+        )
+    else:
+        cost_note = "Eine verlässliche Kostenschätzung liegt derzeit nicht vor."
+
+    if complete:
+        observation = (
+            "Einfache Einschätzung anhand der vorhandenen Temperaturen: "
+            f"Das Heizwasser kam im Schnitt mit {format_value(supply_mean, 'Grad')} "
+            f"in die Heizkörper und mit {format_value(return_mean, 'Grad')} zurück. "
+            f"Der Abstand zwischen den Temperaturen betrug "
+            f"{format_value(spread_mean, 'Grad')}. Zwischen zwei Messungen "
+            f"änderte sich die Temperatur höchstens um {format_value(max_jump, 'Grad')}. "
+            f"{cost_note}"
+        )
+    else:
+        observation = (
+            "Einfache Einschätzung: Die vorhandenen Angaben reichen nicht aus, "
+            "um die Temperatur "
+            f"des Heizwassers auf dem Hin- und Rückweg zu vergleichen. {cost_note}"
+        )
     if provisional:
-        observation += " Die Sensorzuordnung ist vorläufig; Befunde sind nicht verifiziert."
+        observation += (
+            " Die Fühler sind noch nicht eindeutig zugeordnet; die Werte "
+            "könnten deshalb vom falschen Rohr stammen."
+        )
 
     return {
         "status": status,
@@ -1132,36 +1165,28 @@ def _local_heating_diagnosis(
     }
 
 
-def analyze_heating_chart(df: pd.DataFrame) -> dict[str, str]:
+def analyze_heating_chart(
+    df: pd.DataFrame,
+    estimated_monthly_loss_eur: int | float | None = None,
+) -> dict[str, str]:
     if not isinstance(df, pd.DataFrame):
-        return _local_heating_diagnosis(
-            pd.DataFrame(),
-            "keine gültigen Heizungsdaten",
-        )
+        return _local_heating_diagnosis(pd.DataFrame(), estimated_monthly_loss_eur)
 
-    recent_data = df.tail(24)
-    if isinstance(recent_data.index, pd.DatetimeIndex):
-        recent_data = recent_data.sort_index()
+    if isinstance(df.index, pd.DatetimeIndex):
+        recent_data = df.sort_index().tail(24)
+    else:
+        recent_data = df.tail(24)
     if recent_data.empty:
-        return _local_heating_diagnosis(recent_data, "keine Messpunkte vorhanden")
+        return _local_heating_diagnosis(recent_data, estimated_monthly_loss_eur)
     if not isinstance(recent_data.index, pd.DatetimeIndex):
-        return _local_heating_diagnosis(
-            recent_data,
-            "Zeitstempelindex ist nicht auswertbar",
-        )
+        return _local_heating_diagnosis(recent_data, estimated_monthly_loss_eur)
 
     try:
         api_key = st.secrets["GEMINI_API_KEY"]
     except (FileNotFoundError, KeyError):
-        return _local_heating_diagnosis(
-            recent_data,
-            "Gemini-API-Schlüssel ist nicht konfiguriert",
-        )
+        return _local_heating_diagnosis(recent_data, estimated_monthly_loss_eur)
     if not api_key:
-        return _local_heating_diagnosis(
-            recent_data,
-            "Gemini-API-Schlüssel ist leer",
-        )
+        return _local_heating_diagnosis(recent_data, estimated_monthly_loss_eur)
 
     csv_data = recent_data.to_csv(
         index=True,
@@ -1169,23 +1194,36 @@ def analyze_heating_chart(df: pd.DataFrame) -> dict[str, str]:
         float_format="%.1f",
     )
     system_instruction = (
-        "Du bist ein erfahrener HKLS-Ingenieur. Analysiere die Zeitreihen "
-        "für Vorlauf und Rücklauf auf Takten des Wärmeerzeugers, eine zu "
-        "geringe Spreizung (Delta T) sowie plötzliche Temperaturabfälle und "
-        "mögliche Sensorstörungen. Nutze ausschließlich die bereitgestellten "
-        "Messwerte und erfinde keine Ursachen oder Messwerte. "
+        "Du erklärst einer Hausverwaltung ohne technisches Vorwissen, was die "
+        "Heizung macht. Schreibe in einfachem Deutsch und mit kurzen Sätzen. "
+        "Vermeide Fachwörter oder erkläre sie sofort. Beschreibe, was die "
+        "Temperaturen über das Heizwasser aussagen, ob dadurch unnötig Energie "
+        "verbraucht werden könnte und was der Installateur konkret prüfen soll. "
+        "Erfinde keine Messwerte, Ursachen oder Reparaturpreise. "
+    )
+    if estimated_monthly_loss_eur and estimated_monthly_loss_eur > 0:
+        system_instruction += (
+            f"Die grobe Schätzung für zusätzliche Energiekosten beträgt etwa "
+            f"{estimated_monthly_loss_eur:.0f} Euro pro Monat. Kennzeichne sie "
+            "als Schätzung und nicht als Reparaturpreis. "
+        )
+    else:
+        system_instruction += (
+            "Es liegt keine verlässliche Kostenschätzung vor; nenne keinen "
+            "Geldbetrag. "
+        )
+    system_instruction += (
         "Gib ausschließlich ein valides JSON-Objekt auf Deutsch mit genau "
         'den Schlüsseln "status", "kurzfazit", "beobachtung" und "massnahme" '
         'zurück. "status" muss exakt "Optimal", "Warnung" oder "Kritisch" sein. '
-        "Wenn die Daten für eine belastbare Diagnose nicht ausreichen, sage "
-        "das ausdrücklich."
+        "Wenn die Messwerte keine sichere Einschätzung erlauben, sage das "
+        "verständlich und deutlich."
     )
     if any("vorläufig" in str(column).lower() for column in recent_data.columns):
         system_instruction += (
-            " WICHTIG: Die Vorlauf-/Rücklauf-Sensorzuordnung ist nur beliebig "
-            "und vorläufig; die Fühler sind noch nicht angeschlossen. "
-            "Kennzeichne alle daraus abgeleiteten Befunde einschließlich "
-            "Delta T als nicht verifiziert und stelle keine reale Anlagenstörung fest."
+            "WICHTIG: Die Temperaturfühler sind noch nicht angeschlossen und "
+            "nicht eindeutig zugeordnet. Weise ausdrücklich darauf hin, dass "
+            "deshalb keine verlässliche Störung festgestellt werden kann."
         )
 
     try:
@@ -1195,27 +1233,15 @@ def analyze_heating_chart(df: pd.DataFrame) -> dict[str, str]:
             timeout=5.0,
         )
     except httpx.HTTPError:
-        return _local_heating_diagnosis(
-            recent_data,
-            "Gemini-Modellliste wegen Netzwerkfehler oder Timeout nicht erreichbar",
-        )
+        return _local_heating_diagnosis(recent_data, estimated_monthly_loss_eur)
     if models_response.status_code != 200:
-        return _local_heating_diagnosis(
-            recent_data,
-            f"Gemini-Modellliste antwortete mit HTTP {models_response.status_code}",
-        )
+        return _local_heating_diagnosis(recent_data, estimated_monthly_loss_eur)
     try:
         available_models = models_response.json().get("models", [])
     except (AttributeError, ValueError):
-        return _local_heating_diagnosis(
-            recent_data,
-            "Gemini-Modellliste hatte ein ungültiges Antwortformat",
-        )
+        return _local_heating_diagnosis(recent_data, estimated_monthly_loss_eur)
     if not isinstance(available_models, list):
-        return _local_heating_diagnosis(
-            recent_data,
-            "Gemini-Modellliste hatte ein ungültiges Antwortformat",
-        )
+        return _local_heating_diagnosis(recent_data, estimated_monthly_loss_eur)
 
     models = []
     for model in available_models:
@@ -1231,12 +1257,8 @@ def analyze_heating_chart(df: pd.DataFrame) -> dict[str, str]:
         ):
             models.append(name.rsplit("/", 1)[-1])
     if not models:
-        return _local_heating_diagnosis(
-            recent_data,
-            "kein verfügbares Flash-Modell mit generateContent gefunden",
-        )
+        return _local_heating_diagnosis(recent_data, estimated_monthly_loss_eur)
 
-    last_failure = "Gemini lieferte keine auswertbare Diagnose"
     for model in models[:2]:
         try:
             response = httpx.post(
@@ -1257,10 +1279,8 @@ def analyze_heating_chart(df: pd.DataFrame) -> dict[str, str]:
                 timeout=8.0,
             )
         except httpx.HTTPError:
-            last_failure = "Gemini-Anfrage wegen Netzwerkfehler oder Timeout fehlgeschlagen"
             continue
         if response.status_code != 200:
-            last_failure = f"Gemini-API antwortete mit HTTP {response.status_code}"
             continue
 
         try:
@@ -1286,9 +1306,9 @@ def analyze_heating_chart(df: pd.DataFrame) -> dict[str, str]:
                 raise ValueError("Gemini-Antwort enthält einen ungültigen Status")
             return diagnosis
         except (IndexError, KeyError, TypeError, ValueError):
-            last_failure = "Gemini-Antwort hatte kein gültiges Diagnose-JSON"
+            continue
 
-    return _local_heating_diagnosis(recent_data, last_failure)
+    return _local_heating_diagnosis(recent_data, estimated_monthly_loss_eur)
 
 
 # --- 1. REALISTISCHE HKLS-DATENGENERIERUNG ---
@@ -1496,11 +1516,14 @@ if is_supabase_prototype:
     st.sidebar.caption("Datenquelle: Supabase · gespeicherte Messungen")
     try:
         df = load_prototype_measurements()
-    except (KeyError, APIError, httpx.HTTPError, ValueError) as error:
-        st.error(f"Supabase-Messungen konnten nicht geladen werden: {error}")
+    except (KeyError, APIError, httpx.HTTPError, ValueError):
+        st.error(
+            "Die Gebäudedaten konnten gerade nicht geladen werden. "
+            "Bitte versuchen Sie es später erneut."
+        )
         st.stop()
     if df.empty:
-        st.error("In Supabase wurden noch keine Messungen für die Prototypen Anlage gefunden.")
+        st.info("Für dieses Gebäude liegen noch keine Messwerte vor.")
         st.stop()
     latest_by_sensor = (
         df.groupby("sensor_id", as_index=False)
@@ -1539,7 +1562,6 @@ if is_supabase_prototype:
         ),
     }]
     loss_eur = 0
-    ticket_body = ""
 else:
     st.sidebar.markdown("---")
     st.sidebar.subheader("⚡ Live-Sensor-Demo (Pitch-Modus)")
@@ -1559,7 +1581,7 @@ else:
         df.loc[df.index[-12:], "Warmwasser_C"] = sim_ww
         df.loc[df.index[-12:], "Spreizung_K"] = round(sim_vl - sim_rl, 1)
 
-    issues, loss_eur, ticket_body = diagnose_system(
+    issues, loss_eur, _ = diagnose_system(
         df.tail(36 if live_mode else len(df))
     )
 
@@ -1609,10 +1631,10 @@ with st.container(key="mobile_location_picker"):
 
 # --- DETAILANSICHTEN ---
 portfolio_tab, details_tab, diagnosis_tab, telemetry_tab = st.tabs([
-    "Portfolio-Leitstelle",
-    "Anlagendetails",
-    "KI-Diagnose",
-    "Live-Telemetrie",
+    "1. Alle Gebäude",
+    "2. Gebäude-Status",
+    "3. Problem & Lösung (KI)",
+    "4. Temperatur-Kurven",
 ])
 
 # --- ANLAGENDETAILS: HEADER & KPI CARDS ---
@@ -1718,182 +1740,181 @@ with details_tab.container(key="dashboard_intro"):
 
 with diagnosis_tab:
     left_col, right_col = st.columns([1.5, 1], gap="large")
+    analysis_key = (
+        f"heating_ai_analysis_{st.session_state['selected_location_index']}"
+    )
+
+    def calculate_building_diagnosis() -> dict[str, str]:
+        fallback_data = df if isinstance(df, pd.DataFrame) else pd.DataFrame()
+        if isinstance(fallback_data.index, pd.DatetimeIndex):
+            fallback_data = fallback_data.sort_index().tail(24)
+        else:
+            fallback_data = fallback_data.tail(24)
+
+        try:
+            with st.spinner("Wir prüfen die Heizung. Das dauert nur einen Moment."):
+                if is_supabase_prototype:
+                    analysis_df = pair_prototype_sensor_readings(df)
+                    if analysis_df.empty:
+                        return _local_heating_diagnosis(
+                            fallback_data,
+                            loss_eur,
+                        )
+                    analysis_df = analysis_df.rename(columns={
+                        "Vorlauf_C": "Vorlauf_C (vorläufig)",
+                        "Ruecklauf_C": "Ruecklauf_C (vorläufig)",
+                        "Spreizung_K": "Spreizung_K (vorläufig)",
+                    })
+                else:
+                    analysis_df = df.set_index("Timestamp")[
+                        [
+                            "Vorlauf_C",
+                            "Ruecklauf_C",
+                            "Warmwasser_C",
+                            "Spreizung_K",
+                        ]
+                    ]
+                return analyze_heating_chart(analysis_df, loss_eur)
+        except Exception:
+            return _local_heating_diagnosis(fallback_data, loss_eur)
 
     with left_col:
-        st.header("Live-KI-Heizungsanalyse")
-        st.markdown(
-            '<p class="section-kicker">Analyse der aktuellen Vorlauf- und Rücklauf-Zeitreihen</p>',
-            unsafe_allow_html=True,
-        )
+        st.header("Schritt 1: Was hat die Anlage?")
         st.caption(
-            "Beim Klick werden die letzten 24 Messpunkte an Google Gemini "
-            "gesendet; bei API-Ausfällen wird eine lokale Kennzahlenanalyse "
-            "angezeigt."
+            "Die erste Einschätzung erscheint automatisch. Sie können sie "
+            "unten jederzeit neu berechnen lassen."
         )
-        analysis_key = (
-            f"heating_ai_analysis_{st.session_state['selected_location_index']}"
-        )
-        analysis_clicked = st.button(
-            "🔍 Heizdiagramm mit KI analysieren",
-            type="primary",
-            width="stretch",
-            key=f"analyze_heating_chart_{st.session_state['selected_location_index']}",
-        )
-        if analysis_clicked:
-            st.session_state.pop(analysis_key, None)
-            try:
-                with st.spinner("Die aktuellen Heizungsdaten werden analysiert …"):
-                    if is_supabase_prototype:
-                        analysis_df = pair_prototype_sensor_readings(df)
-                        if analysis_df.empty:
-                            raise ValueError(
-                                "Für Vorlauf und Rücklauf wurden keine zeitlich "
-                                "passenden Sensorpaare gefunden."
-                            )
-                        analysis_df = analysis_df.rename(columns={
-                            "Vorlauf_C": "Vorlauf_C (vorläufig)",
-                            "Ruecklauf_C": "Ruecklauf_C (vorläufig)",
-                            "Spreizung_K": "Spreizung_K (vorläufig)",
-                        })
-                    else:
-                        analysis_df = df.set_index("Timestamp")[
-                            [
-                                "Vorlauf_C",
-                                "Ruecklauf_C",
-                                "Warmwasser_C",
-                                "Spreizung_K",
-                            ]
-                        ]
-                    st.session_state[analysis_key] = analyze_heating_chart(
-                        analysis_df
-                    )
-            except Exception as error:
-                fallback_data = (
-                    df.tail(24) if isinstance(df, pd.DataFrame) else pd.DataFrame()
-                )
-                if isinstance(fallback_data.index, pd.DatetimeIndex):
-                    fallback_data = fallback_data.sort_index()
-                st.session_state[analysis_key] = _local_heating_diagnosis(
-                    fallback_data,
-                    f"Datenaufbereitung fehlgeschlagen ({type(error).__name__})",
-                )
-                st.warning(
-                    "Die KI-Auswertung war nicht verfügbar; lokale Kennzahlen "
-                    "werden angezeigt."
-                )
+        if not st.session_state.get(analysis_key):
+            st.session_state[analysis_key] = calculate_building_diagnosis()
 
         analysis_result = st.session_state.get(analysis_key)
-        if analysis_result:
-            st.markdown("#### Diagnoseergebnis")
-            if isinstance(analysis_result, dict):
-                status_colors = {
-                    "Optimal": "#15803d",
-                    "Warnung": "#b45309",
-                    "Kritisch": "#b91c1c",
-                }
-                status = analysis_result["status"]
-                color = status_colors[status]
-                safe_status = html.escape(status)
-                safe_summary = html.escape(analysis_result["kurzfazit"])
-                st.markdown(
-                    (
-                        f'<div role="status" aria-label="Diagnosestatus {safe_status}" '
-                        f'style="background:{color}; color:#fff; border-radius:12px; '
-                        "padding:1.1rem 1.3rem; margin-bottom:1rem; "
-                        'box-shadow:0 6px 20px rgba(0,0,0,.18);">'
-                        f'<span style="display:inline-block; padding:.25rem .7rem; '
-                        "border-radius:999px; background:rgba(255,255,255,.18); "
-                        f'font-size:.8rem; font-weight:700;">{safe_status}</span>'
-                        f'<div style="font-size:1.15rem; font-weight:700; '
-                        f'margin-top:.65rem;">{safe_summary}</div></div>'
-                    ),
-                    unsafe_allow_html=True,
-                )
-
-                observation_col, measure_col = st.columns(2, gap="medium")
-                with observation_col:
-                    with st.container(border=True):
-                        st.markdown("#### 📊 Beobachtung")
-                        st.write(analysis_result["beobachtung"])
-                with measure_col:
-                    with st.container(border=True):
-                        st.markdown("#### 🛠️ Ursache & Maßnahme")
-                        st.write(analysis_result["massnahme"])
-            elif isinstance(analysis_result, str):
-                st.markdown(analysis_result)
-        elif not analysis_clicked:
-            st.info(
-                "Klicken Sie auf „Heizdiagramm mit KI analysieren“, um die "
-                "aktuellen Live-Sensordaten auszuwerten."
+        if isinstance(analysis_result, dict):
+            status_colors = {
+                "Optimal": "#15803d",
+                "Warnung": "#b45309",
+                "Kritisch": "#b91c1c",
+            }
+            status = analysis_result["status"]
+            color = status_colors[status]
+            safe_status = html.escape(status)
+            safe_summary = html.escape(analysis_result["kurzfazit"])
+            st.markdown(
+                (
+                    f'<div role="status" aria-label="Status: {safe_status}" '
+                    f'style="background:{color}; color:#fff; border-radius:12px; '
+                    "padding:1.1rem 1.3rem; margin-bottom:1rem; "
+                    'box-shadow:0 6px 20px rgba(0,0,0,.18);">'
+                    f'<span style="display:inline-block; padding:.25rem .7rem; '
+                    "border-radius:999px; background:rgba(255,255,255,.18); "
+                    f'font-size:.8rem; font-weight:700;">{safe_status}</span>'
+                    f'<div style="font-size:1.15rem; font-weight:700; '
+                    f'margin-top:.65rem;">{safe_summary}</div></div>'
+                ),
+                unsafe_allow_html=True,
             )
+
+            observation_col, measure_col = st.columns(2, gap="medium")
+            with observation_col:
+                with st.container(border=True):
+                    st.markdown("#### Was wurde gemessen?")
+                    st.write(analysis_result["beobachtung"])
+            with measure_col:
+                with st.container(border=True):
+                    st.markdown("#### Was muss getan werden?")
+                    st.write(analysis_result["massnahme"])
+        elif isinstance(analysis_result, str):
+            st.markdown(analysis_result)
+
+        if st.button(
+            "🔄 Diagnose neu berechnen",
+            width="stretch",
+            key=f"recalculate_diagnosis_{st.session_state['selected_location_index']}",
+        ):
+            st.session_state[analysis_key] = calculate_building_diagnosis()
+            st.session_state.pop(
+                f"installer_email_{st.session_state['selected_location_index']}",
+                None,
+            )
+            st.rerun()
 
     with right_col:
-        st.header(
-            "Datenzuordnung"
-            if is_supabase_prototype
-            else "Installateur-Ticket"
-        )
-        st.markdown(
-            (
-                '<p class="section-kicker">Benötigte Sensor-Metadaten</p>'
-                if is_supabase_prototype
-                else '<p class="section-kicker">Auftragsentwurf direkt aus der Diagnose</p>'
-            ),
-            unsafe_allow_html=True,
-        )
+        st.header("Schritt 2: Nachricht an den Installateur")
+        diagnosis = st.session_state.get(analysis_key)
         if is_supabase_prototype:
             st.info(
-                f"Vorläufige Zuordnung: {assignment_summary}. "
-                "Die Fühler sind noch nicht angeschlossen; die Bezeichnungen "
-                "sind daher keine bestätigten Vorlauf-/Rücklaufmessungen. "
-                "Automatische HKLS-Alarme bleiben deaktiviert."
+                "Die Temperaturfühler sind noch nicht angeschlossen. Der Text "
+                "bittet deshalb zuerst um eine Prüfung der Messstellen."
             )
-        elif loss_eur > 0:
             default_ticket = (
-                f"An: Kundendienst HKLS-Partnerbetrieb\n"
-                f"Objekt: {building_name}, 6020 Innsbruck\n\n"
-                f"Automatische Störungsmeldung durch HeatTrace-Sensorik:\n"
-                f"{ticket_body}\n"
-                f"Geschätzter Energieverlust aktuell: ca. {loss_eur} EUR/Monat.\n"
-                f"Bitte um Terminvorschlag zur Behebung."
+                f"Betreff: Heizungsfühler in {building_name} prüfen\n\n"
+                "Guten Tag,\n\n"
+                "bitte schließen Sie die Temperaturfühler an und kennzeichnen "
+                "Sie eindeutig, welcher Fühler das warme Wasser und welcher "
+                "das zurückfließende Wasser misst. Bitte prüfen Sie die Anlage "
+                "nach dem Anschluss und senden Sie uns vor weiteren Arbeiten "
+                "einen Kostenvoranschlag.\n\nVielen Dank"
             )
-            st.text_area(
-                "Fertiger Auftragsentwurf für die Hausverwaltung:",
-                value=default_ticket,
-                height=180,
+        else:
+            summary = (
+                diagnosis.get("kurzfazit", "")
+                if isinstance(diagnosis, dict)
+                else "Die Heizung sollte vorsorglich geprüft werden."
             )
-            if st.button(
-                "Auftragstext im Demo-Modus prüfen",
-                width="stretch",
-                type="primary",
-            ):
-                st.toast(
-                    "Demo: Der Entwurf wurde nicht an einen Installateur gesendet.",
-                    icon="ℹ️",
+            measure = (
+                diagnosis.get("massnahme", "")
+                if isinstance(diagnosis, dict)
+                else "Bitte prüfen Sie die Heizungsanlage und teilen Sie uns das Ergebnis mit."
+            )
+            default_ticket = (
+                f"Betreff: Heizungsanlage in {building_name} prüfen\n\n"
+                "Guten Tag,\n\n"
+                f"bei der letzten Prüfung fiel Folgendes auf: {summary}\n"
+                f"Bitte prüfen Sie: {measure}\n\n"
+                "Bitte nennen Sie uns vor einer Reparatur die voraussichtlichen "
+                "Kosten und die mögliche monatliche Einsparung.\n\nVielen Dank"
+            )
+
+        st.text_area(
+            "Fertiger Text für die E-Mail:",
+            value=default_ticket,
+            height=180,
+            key=f"installer_email_{st.session_state['selected_location_index']}",
+        )
+        if st.button(
+            "📋 Auftragstext für E-Mail bereitstellen",
+            width="stretch",
+            type="primary",
+            key=f"prepare_installer_email_{st.session_state['selected_location_index']}",
+        ):
+            st.toast(
+                "Der Text steht oben bereit und kann in eine E-Mail kopiert werden.",
+                icon="📋",
+            )
+
+        st.divider()
+        st.header("Schritt 3: Lohnt sich die Reparatur?")
+        investment_cost = st.number_input(
+            "Geschätzte Reparaturkosten (€)",
+            min_value=0,
+            step=250,
+            value=450,
+            key="investment_cost",
+        )
+        if loss_eur > 0:
+            st.metric(
+                "Geschätzte zusätzliche Energiekosten pro Monat",
+                f"€ {loss_eur:,}",
+            )
+            if investment_cost > 0:
+                st.success(
+                    f"Die Maßnahme rechnet sich voraussichtlich in "
+                    f"{investment_cost / loss_eur:.1f} Monaten."
                 )
         else:
-            st.info("Kein Wartungsticket erforderlich. Anlage arbeitet innerhalb aller Grenzwerte.")
-
-        if not is_supabase_prototype:
-            st.markdown("### Amortisations-Benchmark")
-            investment_cost = st.number_input(
-                "Geschätzte Maßnahmenkosten (€)",
-                min_value=0,
-                step=250,
-                value=0,
-                key="investment_cost",
+            st.info(
+                "Für dieses Gebäude liegt noch keine verlässliche Schätzung "
+                "der möglichen Einsparung vor."
             )
-            st.metric("Einsparpotenzial pro Heizsaison", f"€ {loss_eur * 6:,}")
-            if investment_cost > 0 and loss_eur > 0:
-                st.caption(
-                    f"Geschätzte Amortisation: "
-                    f"{investment_cost / loss_eur:.1f} Monate bei € {loss_eur:,} "
-                    "Einsparpotenzial pro Monat."
-                )
-            elif loss_eur > 0:
-                st.caption("Maßnahmenkosten eintragen, um die Amortisationszeit zu schätzen.")
-            else:
-                st.caption("Bei aktuellem Anlagenstatus ist kein Einsparpotenzial diagnostiziert.")
 
 with telemetry_tab:
     period_options = [
@@ -2003,10 +2024,8 @@ with telemetry_tab:
                         chart_end.ceil("h") + pd.Timedelta(hours=1),
                     )
                 ]
-            except (httpx.HTTPError, ValueError) as error:
-                st.warning(
-                    f"Innsbrucker Außentemperaturen konnten nicht geladen werden: {error}"
-                )
+            except (httpx.HTTPError, ValueError):
+                st.warning("Die aktuelle Außentemperatur ist gerade nicht verfügbar.")
 
         st.header("Supabase-Temperaturverlauf")
         st.markdown(
