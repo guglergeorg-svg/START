@@ -8,7 +8,6 @@ from datetime import datetime, timedelta
 
 from google import genai
 from google.genai import types
-from google.genai.errors import APIError as GeminiAPIError
 from postgrest.exceptions import APIError
 from site_pages import render_site_footer
 from supabase import Client, create_client
@@ -1064,18 +1063,18 @@ def analyze_heating_chart(df: pd.DataFrame) -> str:
             "Delta T als nicht verifiziert und stelle keine reale Anlagenstörung fest."
         )
 
-    client = genai.Client(api_key=api_key)
-    try:
-        response = client.models.generate_content(
-            model="gemini-3.8-flash",
-            contents=f"Heizungsdaten als CSV:\n{csv_data}",
-            config=types.GenerateContentConfig(
-                system_instruction=system_instruction,
-                temperature=0.2,
-            ),
-        )
-    finally:
-        client.close()
+    client = genai.Client(
+        api_key=api_key,
+        http_options=types.HttpOptions(timeout=25000),
+    )
+    response = client.models.generate_content(
+        model="gemini-3.8-flash",
+        contents=f"Heizungsdaten als CSV:\n{csv_data}",
+        config=types.GenerateContentConfig(
+            system_instruction=system_instruction,
+            temperature=0.2,
+        ),
+    )
 
     if not response.text or not response.text.strip():
         raise ValueError("Gemini hat keine textuelle Diagnose zurückgegeben.")
@@ -1557,7 +1556,7 @@ with diagnosis_tab:
                     st.session_state[analysis_key] = analyze_heating_chart(
                         analysis_df
                     )
-            except (GeminiAPIError, KeyError, ValueError, httpx.HTTPError) as error:
+            except Exception as error:
                 st.error(f"Die KI-Analyse ist fehlgeschlagen: {error}")
 
         analysis_result = st.session_state.get(analysis_key)
