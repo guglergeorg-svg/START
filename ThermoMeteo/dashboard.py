@@ -4,6 +4,7 @@ import numpy as np
 import httpx
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+import time
 from datetime import datetime, timedelta
 
 from postgrest.exceptions import APIError
@@ -1061,28 +1062,45 @@ def analyze_heating_chart(df: pd.DataFrame) -> str:
             "Delta T als nicht verifiziert und stelle keine reale Anlagenstörung fest."
         )
 
-    response = httpx.post(
-        "https://generativelanguage.googleapis.com/v1beta/models/"
-        "gemini-3.8-flash:generateContent",
-        params={"key": api_key},
-        json={
-            "systemInstruction": {"parts": [{"text": system_instruction}]},
-            "contents": [
-                {"parts": [{"text": f"Heizungsdaten als CSV:\n{csv_data}"}]}
-            ],
-            "generationConfig": {
-                "temperature": 0.2,
-                "maxOutputTokens": 500,
-            },
-        },
-        timeout=15.0,
-    )
+    models = [
+        "gemini-3.8-flash",
+        "gemini-3.8-flash-lite",
+        "gemini-2.5-pro",
+        "gemini-2.0-flash",
+    ]
+    last_error = ""
+    retryable_statuses = (429, 500, 503, 404)
 
-    if response.status_code != 200:
-        raise ValueError(
-            f"API-Fehler {response.status_code}: {response.text}"
+    for model_index, model in enumerate(models):
+        response = httpx.post(
+            "https://generativelanguage.googleapis.com/v1beta/models/"
+            f"{model}:generateContent",
+            params={"key": api_key},
+            json={
+                "systemInstruction": {"parts": [{"text": system_instruction}]},
+                "contents": [
+                    {"parts": [{"text": f"Heizungsdaten als CSV:\n{csv_data}"}]}
+                ],
+                "generationConfig": {
+                    "temperature": 0.2,
+                    "maxOutputTokens": 500,
+                },
+            },
+            timeout=15.0,
         )
-    return response.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+
+        if response.status_code == 200:
+            return response.json()["candidates"][0]["content"]["parts"][0][
+                "text"
+            ].strip()
+
+        last_error = f"API-Fehler {response.status_code}: {response.text}"
+        if response.status_code not in retryable_statuses:
+            raise ValueError(last_error)
+        if model_index < len(models) - 1:
+            time.sleep(1)
+
+    raise ValueError(last_error)
 
 
 # --- 1. REALISTISCHE HKLS-DATENGENERIERUNG ---
@@ -1520,8 +1538,9 @@ with diagnosis_tab:
             unsafe_allow_html=True,
         )
         st.caption(
-            "Beim Klick werden die letzten 60 Messpunkte an Google Gemini "
-            "(gemini-3.8-flash) zur Analyse gesendet."
+            "Beim Klick werden die letzten 20 Messpunkte an Google Gemini "
+            "gesendet; bei Rate-Limit, Überlastung oder nicht verfügbarem "
+            "Modell wird automatisch ein Fallback-Modell versucht."
         )
         analysis_key = (
             f"heating_ai_analysis_{st.session_state['selected_location_index']}"
