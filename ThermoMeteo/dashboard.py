@@ -1520,9 +1520,44 @@ with telemetry_tab:
     if chart_df.empty:
         st.info("Für den gewählten Zeitraum liegen keine Messungen vor.")
 
+    prototype_sensor_ids = (
+        sorted(df["sensor_id"].unique()) if is_supabase_prototype else []
+    )
+    curve_scope = "prototype" if is_supabase_prototype else "demo"
+    if is_supabase_prototype:
+        curve_options = [
+            (sensor_assignments[sensor_id], f"sensor_{sensor_id}")
+            for sensor_id in prototype_sensor_ids
+        ]
+        curve_options.extend([
+            ("Spreizung ΔT (vorläufig)", "spread"),
+            ("Außentemperatur Innsbruck", "weather"),
+        ])
+    else:
+        curve_options = [
+            ("Vorlauf", "vorlauf"),
+            ("Rücklauf", "ruecklauf"),
+            ("Warmwasser", "warmwasser"),
+            ("Spreizung ΔT", "spread"),
+            ("Außentemperatur", "weather"),
+        ]
+
+    st.markdown("**Anzuzeigende Kurven**")
+    curve_columns = st.columns(min(3, len(curve_options)))
+    show_curves = {}
+    for curve_index, (curve_label, curve_key) in enumerate(curve_options):
+        with curve_columns[curve_index % len(curve_columns)]:
+            show_curves[curve_key] = st.checkbox(
+                curve_label,
+                value=True,
+                key=f"telemetry_curve_{curve_scope}_{curve_key}",
+            )
+    if not any(show_curves.values()):
+        st.info("Bitte wählen Sie mindestens eine Kurve aus.")
+
     if is_supabase_prototype:
         weather_chart_df = pd.DataFrame(columns=["Timestamp", "Aussen_C"])
-        if not chart_df.empty:
+        if show_curves["weather"] and not chart_df.empty:
             try:
                 weather_df = load_innsbruck_weather(
                     chart_df["Timestamp"].min().date().isoformat(),
@@ -1566,6 +1601,8 @@ with telemetry_tab:
         for sensor_index, (sensor_id, sensor_data) in enumerate(
             chart_df.groupby("sensor_id", sort=True)
         ):
+            if not show_curves[f"sensor_{sensor_id}"]:
+                continue
             fig.add_trace(
                 go.Scatter(
                     x=sensor_data["Timestamp"],
@@ -1581,15 +1618,20 @@ with telemetry_tab:
                 col=1,
             )
 
-        sensor_ids = sorted(df["sensor_id"].unique())
-        if len(sensor_ids) >= 2:
+        if show_curves["spread"] and len(prototype_sensor_ids) >= 2:
             vorlauf_data = (
-                df.loc[df["sensor_id"] == sensor_ids[0], ["Timestamp", "Temperatur_C"]]
+                df.loc[
+                    df["sensor_id"] == prototype_sensor_ids[0],
+                    ["Timestamp", "Temperatur_C"],
+                ]
                 .rename(columns={"Temperatur_C": "Vorlauf_C"})
                 .sort_values("Timestamp")
             )
             ruecklauf_data = (
-                df.loc[df["sensor_id"] == sensor_ids[1], ["Timestamp", "Temperatur_C"]]
+                df.loc[
+                    df["sensor_id"] == prototype_sensor_ids[1],
+                    ["Timestamp", "Temperatur_C"],
+                ]
                 .rename(columns={"Temperatur_C": "Ruecklauf_C"})
                 .sort_values("Timestamp")
             )
@@ -1631,10 +1673,10 @@ with telemetry_tab:
                     col=1,
                     secondary_y=False,
                 )
-        else:
+        elif show_curves["spread"]:
             st.info("Für die Spreizung werden mindestens zwei Sensoren benötigt.")
 
-        if not weather_chart_df.empty:
+        if show_curves["weather"] and not weather_chart_df.empty:
             fig.add_trace(
                 go.Scatter(
                     x=weather_chart_df["Timestamp"],
@@ -1650,7 +1692,7 @@ with telemetry_tab:
             fig.update_xaxes(
                 range=[chart_df["Timestamp"].min(), chart_df["Timestamp"].max()]
             )
-        else:
+        elif show_curves["weather"]:
             st.info("Für den ausgewählten Zeitraum liegen keine Innsbruck-Wetterdaten vor.")
 
         fig.update_yaxes(title_text="Temperatur (°C)", row=1, col=1)
@@ -1679,21 +1721,26 @@ with telemetry_tab:
             ),
         )
 
-        fig.add_trace(go.Scatter(x=chart_df["Timestamp"], y=chart_df["Vorlauf_C"], name="Vorlauf (T_VL)", line=dict(color="#b42318", width=2)), row=1, col=1)
-        fig.add_trace(go.Scatter(x=chart_df["Timestamp"], y=chart_df["Ruecklauf_C"], name="Rücklauf (T_RL)", line=dict(color="#1d4ed8", width=2)), row=1, col=1)
-        fig.add_trace(go.Scatter(x=chart_df["Timestamp"], y=chart_df["Warmwasser_C"], name="Warmwasser (T_WW)", line=dict(color="#b45309", width=2, dash="dot")), row=1, col=1)
+        if show_curves["vorlauf"]:
+            fig.add_trace(go.Scatter(x=chart_df["Timestamp"], y=chart_df["Vorlauf_C"], name="Vorlauf (T_VL)", line=dict(color="#b42318", width=2)), row=1, col=1)
+        if show_curves["ruecklauf"]:
+            fig.add_trace(go.Scatter(x=chart_df["Timestamp"], y=chart_df["Ruecklauf_C"], name="Rücklauf (T_RL)", line=dict(color="#1d4ed8", width=2)), row=1, col=1)
+        if show_curves["warmwasser"]:
+            fig.add_trace(go.Scatter(x=chart_df["Timestamp"], y=chart_df["Warmwasser_C"], name="Warmwasser (T_WW)", line=dict(color="#b45309", width=2, dash="dot")), row=1, col=1)
 
-        fig.add_hline(
-            y=55,
-            line_dash="dash",
-            line_color="#64748b",
-            annotation_text="55°C Referenz",
-            row=1,
-            col=1,
-        )
+            fig.add_hline(
+                y=55,
+                line_dash="dash",
+                line_color="#64748b",
+                annotation_text="55°C Referenz",
+                row=1,
+                col=1,
+            )
 
-        fig.add_trace(go.Scatter(x=chart_df["Timestamp"], y=chart_df["Spreizung_K"], name="Spreizung ΔT (K)", fill="tozeroy", fillcolor="rgba(4, 120, 87, 0.12)", line=dict(color="#047857", width=1.5)), row=2, col=1)
-        fig.add_trace(go.Scatter(x=chart_df["Timestamp"], y=chart_df["Aussen_C"], name="Außentemp. (°C)", line=dict(color="#475569", width=1.5)), row=2, col=1)
+        if show_curves["spread"]:
+            fig.add_trace(go.Scatter(x=chart_df["Timestamp"], y=chart_df["Spreizung_K"], name="Spreizung ΔT (K)", fill="tozeroy", fillcolor="rgba(4, 120, 87, 0.12)", line=dict(color="#047857", width=1.5)), row=2, col=1)
+        if show_curves["weather"]:
+            fig.add_trace(go.Scatter(x=chart_df["Timestamp"], y=chart_df["Aussen_C"], name="Außentemp. (°C)", line=dict(color="#475569", width=1.5)), row=2, col=1)
         chart_alt = (
             "Temperaturverlauf von Vorlauf, Rücklauf, Warmwasser, "
             "Spreizung und Außentemperatur"
