@@ -6,6 +6,9 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from datetime import datetime, timedelta
 
+from google import genai
+from google.genai import types
+from google.genai.errors import APIError as GeminiAPIError
 from postgrest.exceptions import APIError
 from site_pages import render_site_footer
 from supabase import Client, create_client
@@ -983,6 +986,102 @@ def load_innsbruck_weather(start_date: str, end_date: str) -> pd.DataFrame:
     return weather.sort_values("Timestamp")
 
 
+def pair_prototype_sensor_readings(measurements: pd.DataFrame) -> pd.DataFrame:
+    empty = pd.DataFrame(
+        columns=["Vorlauf_C", "Ruecklauf_C", "Spreizung_K"],
+        index=pd.DatetimeIndex([], name="Timestamp"),
+    )
+    sensor_ids = sorted(measurements["sensor_id"].dropna().unique())
+    if len(sensor_ids) < 2:
+        return empty
+
+    vorlauf = (
+        measurements.loc[
+            measurements["sensor_id"] == sensor_ids[0],
+            ["Timestamp", "Temperatur_C"],
+        ]
+        .rename(columns={"Temperatur_C": "Vorlauf_C"})
+        .sort_values("Timestamp")
+    )
+    ruecklauf = (
+        measurements.loc[
+            measurements["sensor_id"] == sensor_ids[1],
+            ["Timestamp", "Temperatur_C"],
+        ]
+        .rename(columns={"Temperatur_C": "Ruecklauf_C"})
+        .sort_values("Timestamp")
+    )
+    paired = pd.merge_asof(
+        vorlauf,
+        ruecklauf,
+        on="Timestamp",
+        direction="nearest",
+        tolerance=pd.Timedelta(seconds=3),
+    ).dropna(subset=["Ruecklauf_C"])
+    if paired.empty:
+        return empty
+
+    paired["Spreizung_K"] = paired["Vorlauf_C"] - paired["Ruecklauf_C"]
+    return (
+        paired.set_index("Timestamp")[
+            ["Vorlauf_C", "Ruecklauf_C", "Spreizung_K"]
+        ]
+        .sort_index()
+    )
+
+
+def analyze_heating_chart(df: pd.DataFrame) -> str:
+    if df.empty:
+        raise ValueError("Es liegen keine Heizungsdaten für die Analyse vor.")
+    if not isinstance(df.index, pd.DatetimeIndex):
+        raise ValueError("Die Heizungsdaten benötigen einen Zeitstempel-Index.")
+
+    api_key = st.secrets["GEMINI_API_KEY"]
+    if not api_key:
+        raise ValueError("Der Gemini-API-Key ist leer.")
+
+    recent_data = df.sort_index().tail(60)
+    csv_data = recent_data.to_csv(
+        index=True,
+        index_label="Timestamp",
+        float_format="%.1f",
+    )
+    system_instruction = (
+        "Du bist ein erfahrener HKLS-Ingenieur. Analysiere die Zeitreihen "
+        "für Vorlauf und Rücklauf auf Takten des Wärmeerzeugers, eine zu "
+        "geringe Spreizung (Delta T) sowie plötzliche Temperaturabfälle und "
+        "mögliche Sensorstörungen. Nutze ausschließlich die bereitgestellten "
+        "Messwerte und erfinde keine Ursachen oder Messwerte. Antworte kurz, "
+        "strukturiert und auf Deutsch mit genau diesen Abschnitten: "
+        "Status, Beobachtung, Ursache & Maßnahme. Wenn die Daten für eine "
+        "belastbare Diagnose nicht ausreichen, sage das ausdrücklich."
+    )
+    if any("vorläufig" in str(column).lower() for column in recent_data.columns):
+        system_instruction += (
+            " WICHTIG: Die Vorlauf-/Rücklauf-Sensorzuordnung ist nur beliebig "
+            "und vorläufig; die Fühler sind noch nicht angeschlossen. "
+            "Kennzeichne alle daraus abgeleiteten Befunde einschließlich "
+            "Delta T als nicht verifiziert und stelle keine reale Anlagenstörung fest."
+        )
+
+    client = genai.Client(api_key=api_key)
+    try:
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=f"Heizungsdaten als CSV:\n{csv_data}",
+            config=types.GenerateContentConfig(
+                system_instruction=system_instruction,
+                temperature=0.2,
+            ),
+        )
+    finally:
+        client.close()
+
+    if not response.text or not response.text.strip():
+        raise ValueError("Gemini hat keine textuelle Diagnose zurückgegeben.")
+    return response.text.strip()
+
+
 # --- 1. REALISTISCHE HKLS-DATENGENERIERUNG ---
 @st.cache_data
 def generate_hvac_data(scenario: str, hours: int = 72):
@@ -1412,35 +1511,64 @@ with diagnosis_tab:
     left_col, right_col = st.columns([1.5, 1], gap="large")
 
     with left_col:
-        diagnosis_title = (
-            "Supabase-Datencheck"
-            if is_supabase_prototype
-            else "Automatische HKLS-Anlagendiagnose"
-        )
-        diagnosis_kicker = (
-            "Messwerte aus der konfigurierten Supabase-Tabelle"
-            if is_supabase_prototype
-            else "Erkannte Abweichungen und empfohlene Maßnahmen"
-        )
-        st.header(diagnosis_title)
+        st.header("Live-KI-Heizungsanalyse")
         st.markdown(
-            f'<p class="section-kicker">{diagnosis_kicker}</p>',
+            '<p class="section-kicker">Analyse der aktuellen Vorlauf- und Rücklauf-Zeitreihen</p>',
             unsafe_allow_html=True,
         )
-        for issue_index, issue in enumerate(issues):
-            message = (
-                f"**[{issue['severity']}] {issue['title']}**\n\n"
-                f"{issue['desc']}\n\n"
-                f"👉 **Empfohlene Maßnahme:** {issue['action']}"
+        st.caption(
+            "Beim Klick werden die letzten 60 Messpunkte an Google Gemini "
+            "(gemini-2.5-flash) zur Analyse gesendet."
+        )
+        analysis_key = (
+            f"heating_ai_analysis_{st.session_state['selected_location_index']}"
+        )
+        analysis_clicked = st.button(
+            "🔍 Heizdiagramm mit KI analysieren",
+            type="primary",
+            width="stretch",
+            key=f"analyze_heating_chart_{st.session_state['selected_location_index']}",
+        )
+        if analysis_clicked:
+            st.session_state.pop(analysis_key, None)
+            try:
+                with st.spinner("Die aktuellen Heizungsdaten werden analysiert …"):
+                    if is_supabase_prototype:
+                        analysis_df = pair_prototype_sensor_readings(df)
+                        if analysis_df.empty:
+                            raise ValueError(
+                                "Für Vorlauf und Rücklauf wurden keine zeitlich "
+                                "passenden Sensorpaare gefunden."
+                            )
+                        analysis_df = analysis_df.rename(columns={
+                            "Vorlauf_C": "Vorlauf_C (vorläufig)",
+                            "Ruecklauf_C": "Ruecklauf_C (vorläufig)",
+                            "Spreizung_K": "Spreizung_K (vorläufig)",
+                        })
+                    else:
+                        analysis_df = df.set_index("Timestamp")[
+                            [
+                                "Vorlauf_C",
+                                "Ruecklauf_C",
+                                "Warmwasser_C",
+                                "Spreizung_K",
+                            ]
+                        ]
+                    st.session_state[analysis_key] = analyze_heating_chart(
+                        analysis_df
+                    )
+            except (GeminiAPIError, KeyError, ValueError, httpx.HTTPError) as error:
+                st.error(f"Die KI-Analyse ist fehlgeschlagen: {error}")
+
+        analysis_result = st.session_state.get(analysis_key)
+        if analysis_result:
+            st.markdown("#### Diagnoseergebnis")
+            st.markdown(analysis_result)
+        elif not analysis_clicked:
+            st.info(
+                "Klicken Sie auf „Heizdiagramm mit KI analysieren“, um die "
+                "aktuellen Live-Sensordaten auszuwerten."
             )
-            alert_variant = issue["severity"].lower().replace("-", "_")
-            with st.container(key=f"diagnostic_alert_{alert_variant}_{issue_index}"):
-                if issue["severity"] in {"KRITISCH", "HYGIENE-ALARM"}:
-                    st.error(message)
-                elif issue["severity"] == "WARNUNG":
-                    st.warning(message)
-                else:
-                    st.success(message)
 
     with right_col:
         st.header(
@@ -1666,34 +1794,9 @@ with telemetry_tab:
             )
 
         if show_curves["spread"] and len(prototype_sensor_ids) >= 2:
-            vorlauf_data = (
-                df.loc[
-                    df["sensor_id"] == prototype_sensor_ids[0],
-                    ["Timestamp", "Temperatur_C"],
-                ]
-                .rename(columns={"Temperatur_C": "Vorlauf_C"})
-                .sort_values("Timestamp")
-            )
-            ruecklauf_data = (
-                df.loc[
-                    df["sensor_id"] == prototype_sensor_ids[1],
-                    ["Timestamp", "Temperatur_C"],
-                ]
-                .rename(columns={"Temperatur_C": "Ruecklauf_C"})
-                .sort_values("Timestamp")
-            )
-            spread_df = pd.merge_asof(
-                vorlauf_data,
-                ruecklauf_data,
-                on="Timestamp",
-                direction="nearest",
-                tolerance=pd.Timedelta(seconds=3),
-            ).dropna(subset=["Ruecklauf_C"])
-            spread_df["Spreizung_K"] = (
-                spread_df["Vorlauf_C"] - spread_df["Ruecklauf_C"]
-            )
-            if not chart_df.empty:
-                spread_df = spread_df[
+            spread_df = pair_prototype_sensor_readings(df).reset_index()
+            if not chart_df.empty and not spread_df.empty:
+                spread_df = spread_df.loc[
                     spread_df["Timestamp"].between(
                         chart_df["Timestamp"].min(),
                         chart_df["Timestamp"].max(),
