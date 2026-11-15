@@ -3,7 +3,7 @@ import pandas as pd
 from supabase import create_client, Client
 
 st.set_page_config(
-    page_title="HeatPulse AI | Heizungs-Monitoring",
+    page_title="HeatTrace | Heizungs-Monitoring",
     page_icon="🔥",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -11,7 +11,7 @@ st.set_page_config(
 
 dashboard_page = st.Page(
     "dashboard.py",
-    title="HeatPulse AI",
+    title="HeatTrace",
     url_path="",
     default=True,
 )
@@ -47,7 +47,7 @@ def load_data():
     response = supabase.table("vorlauf_messungen").select("*").order("created_at", desc=True).limit(200).execute()
     return response.data
 
-st.title("Vorlaufwächter Dashboard")
+st.title("HeatTrace Dashboard")
 
 raw_data = load_data()
 

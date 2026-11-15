@@ -860,7 +860,7 @@ def diagnose_system(df: pd.DataFrame):
     return issues, loss_eur_month, ticket_text
 
 # --- SIDEBAR: OBJEKTAUSWAHL & LIVE-PITCH-SIMULATOR ---
-st.sidebar.title("🏢 HeatPulse AI")
+st.sidebar.title("🏢 HeatTrace")
 st.sidebar.caption("Plug-&-Play Heizkeller-Intelligenz für Hausverwaltungen")
 
 portfolio_locations = [
@@ -1085,7 +1085,7 @@ with diagnosis_tab:
             default_ticket = (
                 f"An: Kundendienst HKLS-Partnerbetrieb\n"
                 f"Objekt: {building_name}, 6020 Innsbruck\n\n"
-                f"Automatische Störungsmeldung durch HeatPulse-Sensorik:\n"
+                f"Automatische Störungsmeldung durch HeatTrace-Sensorik:\n"
                 f"{ticket_body}\n"
                 f"Geschätzter Energieverlust aktuell: ca. {loss_eur} EUR/Monat.\n"
                 f"Bitte um Terminvorschlag zur Behebung."
