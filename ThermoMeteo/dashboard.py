@@ -1482,6 +1482,24 @@ prototype_location = {
 available_locations = portfolio_locations + [prototype_location]
 
 
+def select_building_and_open_diagnosis(location_index: int) -> None:
+    if not 0 <= location_index < len(available_locations):
+        raise ValueError(f"Ungültiger Gebäudeindex: {location_index}")
+    st.session_state.pop("portfolio_map", None)
+    st.session_state["selected_location_index"] = location_index
+    st.session_state["sidebar_location_index"] = location_index
+    st.session_state["mobile_location_index"] = location_index
+    st.session_state["jump_to_diagnosis_tab"] = True
+
+
+pending_location_index = st.session_state.pop(
+    "pending_portfolio_location_index",
+    None,
+)
+if pending_location_index is not None:
+    select_building_and_open_diagnosis(pending_location_index)
+
+
 def sync_location_selection(widget_key: str) -> None:
     selected_index = st.session_state[widget_key]
     st.session_state["selected_location_index"] = selected_index
@@ -1592,7 +1610,7 @@ status_style = {
     "OK": ("Optimal", [34, 197, 94]),
 }
 portfolio_rows = []
-for location in portfolio_locations:
+for location_index, location in enumerate(portfolio_locations):
     portfolio_data = generate_hvac_data(location["scenario"])
     portfolio_issues, portfolio_loss, _ = diagnose_system(portfolio_data)
     issue_severity = max(
@@ -1606,6 +1624,7 @@ for location in portfolio_locations:
     )
     status_label, marker_color = status_style[issue_severity]
     portfolio_rows.append({
+        "location_index": location_index,
         "Objekt": location["building"],
         "Adresse": f"{location['building']}, Innsbruck",
         "Status": status_label,
@@ -1636,6 +1655,20 @@ portfolio_tab, details_tab, diagnosis_tab, telemetry_tab = st.tabs([
     "3. Problem & Lösung (KI)",
     "4. Temperatur-Kurven",
 ])
+
+if st.session_state.pop("jump_to_diagnosis_tab", False):
+    st.components.v1.html(
+        """
+        <script>
+        const diagnosisTab =
+            window.parent.document.querySelectorAll(
+                '[data-testid="stTabs"] button[role="tab"]'
+            )[2];
+        if (diagnosisTab) diagnosisTab.click();
+        </script>
+        """,
+        height=0,
+    )
 
 # --- ANLAGENDETAILS: HEADER & KPI CARDS ---
 building_name = selected_location["building"]
@@ -2253,6 +2286,39 @@ with portfolio_tab:
         f"von {len(portfolio_df)} Anlagen",
         delta_color="inverse",
     )
+    st.markdown("### Sofort-Handlungsbedarf")
+    problem_buildings = portfolio_df.loc[
+        portfolio_df["Status"] != "Optimal"
+    ]
+    if not problem_buildings.empty:
+        problem_columns = st.columns(3)
+        for card_index, (location_index, building) in enumerate(
+            problem_buildings.iterrows()
+        ):
+            with problem_columns[card_index % len(problem_columns)]:
+                with st.container(border=True):
+                    st.markdown(f"#### {building['Objekt']}")
+                    if building["Status"] in {"Kritisch", "Hygiene-Alarm"}:
+                        st.error(f"Status: {building['Status']}")
+                    else:
+                        st.warning(f"Status: {building['Status']}")
+                    st.metric(
+                        "Geschätzter Verlust pro Monat",
+                        f"€ {int(building['Verlust / Monat (€)']):,}",
+                    )
+                    if st.button(
+                        "🔍 Problem & Lösung öffnen",
+                        key=f"open_building_diagnosis_{location_index}",
+                        width="stretch",
+                        type="primary",
+                    ):
+                        st.session_state[
+                            "pending_portfolio_location_index"
+                        ] = int(location_index)
+                        st.rerun()
+    else:
+        st.info("Alle Gebäude arbeiten derzeit ohne gemeldeten Handlungsbedarf.")
+
     st.markdown("### Portfolio-Karte")
     if not st.session_state.get("external_map_consent", False):
         with st.container(border=True):
@@ -2285,6 +2351,7 @@ with portfolio_tab:
         marker_layer = pdk.Layer(
             "ScatterplotLayer",
             data=portfolio_df,
+            id="portfolio_buildings",
             get_position="[longitude, latitude]",
             get_fill_color="[color_r, color_g, color_b, 220]",
             get_line_color="[255, 255, 255, 220]",
@@ -2321,11 +2388,21 @@ with portfolio_tab:
                 },
             },
         )
-        st.pydeck_chart(
+        event = st.pydeck_chart(
             portfolio_map,
             width="stretch",
             height=620,
             key="portfolio_map",
+            on_select="rerun",
+            selection_mode="single-object",
         )
+        selected_objects = event.selection.objects.get("portfolio_buildings", [])
+        if selected_objects:
+            location_index = selected_objects[0].get("location_index")
+            if location_index is not None:
+                st.session_state[
+                    "pending_portfolio_location_index"
+                ] = int(location_index)
+                st.rerun()
 
 render_site_footer()
