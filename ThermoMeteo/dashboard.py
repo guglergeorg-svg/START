@@ -134,18 +134,47 @@ st.markdown("""
         border-radius: 16px;
     }
 
-    [data-testid="stTabs"] button {
-        font-weight: 600;
-    }
-
     [data-testid="stTabs"] [role="tablist"] {
-        gap: 0.4rem;
-        border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 0.7rem;
+        border-bottom: 0;
     }
 
-    [data-testid="stTabs"] button[aria-selected="true"] {
-        color: #a5b4fc;
-        border-bottom-color: #818cf8;
+    [data-testid="stTabs"] [role="tab"] {
+        min-height: 3.5rem;
+        justify-content: center;
+        padding: 0.8rem 1rem;
+        color: #365247;
+        background: #fff;
+        border: 1px solid #d7e1d9;
+        border-radius: 14px;
+        font-size: 0.95rem;
+        font-weight: 700;
+        text-align: center;
+        white-space: normal;
+        transition: background 120ms ease, border-color 120ms ease, transform 120ms ease;
+    }
+
+    [data-testid="stTabs"] [role="tab"]:hover {
+        background: #edf7f0;
+        border-color: #84b69a;
+        transform: translateY(-1px);
+    }
+
+    [data-testid="stTabs"] [role="tab"][aria-selected="true"] {
+        color: #fff;
+        background: #187b63;
+        border-color: #187b63;
+    }
+
+    [data-testid="stTabs"] [role="tab"]:focus-visible {
+        outline: 3px solid #a35400;
+        outline-offset: 3px;
+    }
+
+    [data-testid="stTabs"] [data-baseweb="tab-highlight"] {
+        display: none;
     }
 
     .section-kicker {
@@ -245,14 +274,13 @@ st.markdown("""
         }
 
         [data-testid="stTabs"] [role="tablist"] {
-            overflow-x: auto;
-            flex-wrap: nowrap;
-            scrollbar-width: thin;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
         }
 
         [data-testid="stTabs"] [role="tab"] {
-            flex: 0 0 auto;
-            white-space: nowrap;
+            min-width: 0;
+            padding: 0.7rem 0.45rem;
+            font-size: 0.82rem;
         }
 
         [data-testid="stPlotlyChart"],
@@ -605,6 +633,24 @@ st.markdown("""
             border: 1px solid var(--line);
             border-radius: 18px;
             box-shadow: 0 8px 26px rgba(32, 57, 43, .05);
+        }
+
+        [data-testid="stPlotlyChart"] {
+            background: #fff;
+        }
+
+        [data-testid="stAlert"] {
+            background: #fff;
+        }
+
+        [data-testid="stAlert"] [data-testid="stMarkdownContainer"],
+        [data-testid="stAlert"] [data-testid="stMarkdownContainer"] p {
+            color: var(--ink);
+        }
+
+        .st-key-portfolio_loss_metric [data-testid="stMetricValue"] {
+            font-size: clamp(1.6rem, 2.1vw, 2rem);
+            font-weight: 760;
         }
 
         [data-baseweb="select"] > div,
@@ -984,14 +1030,22 @@ for location in portfolio_locations:
     })
 portfolio_df = pd.DataFrame(portfolio_rows)
 
-# --- HAUPTBEREICH: HEADER & KPI CARDS ---
+# --- DETAILANSICHTEN ---
+portfolio_tab, details_tab, diagnosis_tab, telemetry_tab = st.tabs([
+    "Portfolio-Leitstelle",
+    "Anlagendetails",
+    "KI-Diagnose",
+    "Live-Telemetrie",
+])
+
+# --- ANLAGENDETAILS: HEADER & KPI CARDS ---
 building_name = selected_location["building"]
-with st.container(key="dashboard_intro"):
+with details_tab.container(key="dashboard_intro"):
     st.markdown(
         f"""
     <div class="hero">
         <div class="hero-copy">
-            <div class="hero-eyebrow"><span class="hero-mark">✳</span> HEATPULSE <span>·</span> ENERGIE-MONITORING</div>
+            <div class="hero-eyebrow"><span class="hero-mark">✳</span> HEATTRACE <span>·</span> ENERGIE-MONITORING</div>
             <h1>Wärme im<br>Gleichgewicht.</h1>
             <p class="hero-building">Anlagenübersicht für <strong>{building_name}</strong></p>
             <div class="hero-meta">
@@ -1045,13 +1099,6 @@ with st.container(key="dashboard_intro"):
         col3.metric("Spreizung", f"{latest['Spreizung_K']} K", "Ziel: 12-15 K" if latest['Spreizung_K'] < 8 else "Optimal", delta_color="normal" if latest['Spreizung_K'] >= 10 else "inverse")
         col4.metric("Warmwasser", f"{latest['Warmwasser_C']} °C", "Hygiene OK" if latest['Warmwasser_C'] >= 55 else "Zu niedrig!", delta_color="normal" if latest['Warmwasser_C'] >= 55 else "inverse")
         col5.metric("Mehrverbrauch", f"€ {loss_eur} / Mo.", f"6 Mon. €{loss_eur * 6:,}" if loss_eur > 0 else "Kein Verlust", delta_color="inverse")
-
-# --- DETAILANSICHTEN ---
-portfolio_tab, diagnosis_tab, telemetry_tab = st.tabs([
-    "🗺️ Portfolio-Leitstelle Innsbruck",
-    "🚨 KI-Diagnose & Wartungs-Ticket",
-    "📈 Live-Telemetrie & Hydraulik",
-])
 
 with diagnosis_tab:
     left_col, right_col = st.columns([1.5, 1], gap="large")
@@ -1146,9 +1193,9 @@ with telemetry_tab:
     )
 
     # Obere Grafik: VL, RL, WW
-    fig.add_trace(go.Scatter(x=df["Timestamp"], y=df["Vorlauf_C"], name="Vorlauf (T_VL)", line=dict(color="#FF4B4B", width=2)), row=1, col=1)
-    fig.add_trace(go.Scatter(x=df["Timestamp"], y=df["Ruecklauf_C"], name="Rücklauf (T_RL)", line=dict(color="#3B82F6", width=2)), row=1, col=1)
-    fig.add_trace(go.Scatter(x=df["Timestamp"], y=df["Warmwasser_C"], name="Warmwasser (T_WW)", line=dict(color="#F59E0B", width=2, dash="dot")), row=1, col=1)
+    fig.add_trace(go.Scatter(x=df["Timestamp"], y=df["Vorlauf_C"], name="Vorlauf (T_VL)", line=dict(color="#b42318", width=2)), row=1, col=1)
+    fig.add_trace(go.Scatter(x=df["Timestamp"], y=df["Ruecklauf_C"], name="Rücklauf (T_RL)", line=dict(color="#1d4ed8", width=2)), row=1, col=1)
+    fig.add_trace(go.Scatter(x=df["Timestamp"], y=df["Warmwasser_C"], name="Warmwasser (T_WW)", line=dict(color="#b45309", width=2, dash="dot")), row=1, col=1)
 
     fig.add_hline(
         y=55,
@@ -1160,17 +1207,22 @@ with telemetry_tab:
     )
 
     # Untere Grafik: Spreizung & Außentemperatur
-    fig.add_trace(go.Scatter(x=df["Timestamp"], y=df["Spreizung_K"], name="Spreizung ΔT (K)", fill="tozeroy", line=dict(color="#10B981", width=1.5)), row=2, col=1)
-    fig.add_trace(go.Scatter(x=df["Timestamp"], y=df["Aussen_C"], name="Außentemp. (°C)", line=dict(color="#9CA3AF", width=1.5)), row=2, col=1)
+    fig.add_trace(go.Scatter(x=df["Timestamp"], y=df["Spreizung_K"], name="Spreizung ΔT (K)", fill="tozeroy", fillcolor="rgba(4, 120, 87, 0.12)", line=dict(color="#047857", width=1.5)), row=2, col=1)
+    fig.add_trace(go.Scatter(x=df["Timestamp"], y=df["Aussen_C"], name="Außentemp. (°C)", line=dict(color="#475569", width=1.5)), row=2, col=1)
 
     fig.update_layout(
         height=550,
         autosize=True,
         template="plotly_white",
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="#ffffff",
+        plot_bgcolor="#ffffff",
         hovermode="x unified",
         margin=dict(l=20, r=20, t=95, b=35),
+        hoverlabel=dict(
+            bgcolor="#ffffff",
+            bordercolor="#dce5de",
+            font=dict(color="#172a27"),
+        ),
         legend=dict(
             orientation="h",
             yanchor="bottom",
@@ -1179,12 +1231,27 @@ with telemetry_tab:
             x=0,
             entrywidthmode="fraction",
             entrywidth=0.24,
+            font=dict(color="#334155", size=12),
         ),
-        font=dict(color="#53635c", family='Inter, "Segoe UI", sans-serif'),
+        font=dict(color="#334155", family='Inter, "Segoe UI", sans-serif'),
     )
-    fig.update_xaxes(gridcolor="rgba(91, 117, 101, 0.12)", zerolinecolor="rgba(91, 117, 101, 0.12)")
-    fig.update_yaxes(gridcolor="rgba(91, 117, 101, 0.12)", zerolinecolor="rgba(91, 117, 101, 0.12)")
-    st.plotly_chart(fig, width="stretch", config={"responsive": True})
+    fig.update_xaxes(
+        gridcolor="#e2e8f0",
+        zerolinecolor="#cbd5e1",
+        tickfont=dict(color="#475569"),
+    )
+    fig.update_yaxes(
+        gridcolor="#e2e8f0",
+        zerolinecolor="#cbd5e1",
+        tickfont=dict(color="#475569"),
+    )
+    st.plotly_chart(
+        fig,
+        width="stretch",
+        config={"responsive": True},
+        theme=None,
+        alt="Temperaturverlauf von Vorlauf, Rücklauf, Warmwasser, Spreizung und Außentemperatur",
+    )
 
 with portfolio_tab:
     st.header("Portfolio-Leitstelle Innsbruck")
@@ -1211,9 +1278,18 @@ with portfolio_tab:
         """,
         unsafe_allow_html=True,
     )
-    st.metric(
-        "Portfolio-Verlust pro Monat",
-        f"€ {int(portfolio_df['Verlust / Monat (€)'].sum()):,}",
+    portfolio_loss = int(portfolio_df["Verlust / Monat (€)"].sum())
+    attention_count = int(portfolio_df["Status"].ne("Optimal").sum())
+    loss_col, assets_col, attention_col = st.columns([1.2, 1, 1], gap="medium")
+    with loss_col:
+        with st.container(key="portfolio_loss_metric"):
+            st.metric("Portfolio-Verlust pro Monat", f"€ {portfolio_loss:,}")
+    assets_col.metric("Anlagen im Portfolio", len(portfolio_df))
+    attention_col.metric(
+        "Anlagen mit Handlungsbedarf",
+        attention_count,
+        f"von {len(portfolio_df)} Anlagen",
+        delta_color="inverse",
     )
     st.markdown("### Portfolio-Karte")
     if not st.session_state.get("external_map_consent", False):
