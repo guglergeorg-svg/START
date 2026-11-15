@@ -1039,7 +1039,7 @@ def analyze_heating_chart(df: pd.DataFrame) -> str:
     if not api_key:
         raise ValueError("Der Gemini-API-Key ist leer.")
 
-    recent_data = df.sort_index().tail(60)
+    recent_data = df.sort_index().tail(24)
     csv_data = recent_data.to_csv(
         index=True,
         index_label="Timestamp",
@@ -1065,7 +1065,7 @@ def analyze_heating_chart(df: pd.DataFrame) -> str:
 
     client = genai.Client(
         api_key=api_key,
-        http_options=types.HttpOptions(timeout=25000),
+        http_options=types.HttpOptions(timeout=60000),
     )
     response = client.models.generate_content(
         model="gemini-3.8-flash",
@@ -1073,6 +1073,8 @@ def analyze_heating_chart(df: pd.DataFrame) -> str:
         config=types.GenerateContentConfig(
             system_instruction=system_instruction,
             temperature=0.2,
+            thinking_config=types.ThinkingConfig(thinking_budget=0),
+            max_output_tokens=600,
         ),
     )
 
