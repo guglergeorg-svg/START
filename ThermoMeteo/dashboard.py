@@ -1776,7 +1776,7 @@ with details_tab.container(key="dashboard_intro"):
         st.dataframe(recent_measurements, width="stretch", hide_index=True)
 
 with diagnosis_tab:
-    left_col, right_col = st.columns([1.5, 1], gap="large")
+    left_col, right_col = st.container(), st.container()
     analysis_key = (
         f"heating_ai_analysis_{st.session_state['selected_location_index']}"
     )
