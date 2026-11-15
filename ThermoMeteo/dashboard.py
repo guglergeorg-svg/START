@@ -718,6 +718,10 @@ st.markdown("""
             background: #fff;
         }
 
+        [data-testid="stAlert"] > div {
+            background: #fff !important;
+        }
+
         [data-testid="stAlert"] [data-testid="stMarkdownContainer"],
         [data-testid="stAlert"] [data-testid="stMarkdownContainer"] p {
             color: var(--ink);
@@ -2299,9 +2303,25 @@ with portfolio_tab:
                 with st.container(border=True):
                     st.markdown(f"#### {building['Objekt']}")
                     if building["Status"] in {"Kritisch", "Hygiene-Alarm"}:
-                        st.error(f"Status: {building['Status']}")
+                        status_background = "#b91c1c"
+                        status_foreground = "#ffffff"
+                        status_border = "#991b1b"
                     else:
-                        st.warning(f"Status: {building['Status']}")
+                        status_background = "#fffbeb"
+                        status_foreground = "#78350f"
+                        status_border = "#fcd34d"
+                    status_label = html.escape(str(building["Status"]))
+                    st.markdown(
+                        (
+                            '<div role="status" style="display:inline-flex; '
+                            "align-items:center; padding:.45rem .7rem; "
+                            f"border:1px solid {status_border}; "
+                            f"border-radius:8px; background:{status_background}; "
+                            f'color:{status_foreground}; font-weight:700;">'
+                            f"Status: {status_label}</div>"
+                        ),
+                        unsafe_allow_html=True,
+                    )
                     st.metric(
                         "Geschätzter Verlust pro Monat",
                         f"€ {int(building['Verlust / Monat (€)']):,}",
