@@ -917,6 +917,45 @@ def load_prototype_measurements() -> pd.DataFrame:
     ].sort_values("Timestamp")
 
 
+@st.cache_data(ttl=3600)
+def load_innsbruck_weather(start_date: str, end_date: str) -> pd.DataFrame:
+    response = httpx.get(
+        "https://archive-api.open-meteo.com/v1/archive",
+        params={
+            "latitude": 47.2692,
+            "longitude": 11.4041,
+            "start_date": start_date,
+            "end_date": end_date,
+            "hourly": "temperature_2m",
+            "timezone": "UTC",
+        },
+        timeout=20.0,
+    )
+    response.raise_for_status()
+    payload = response.json()
+    hourly = payload.get("hourly") if isinstance(payload, dict) else None
+    if not isinstance(hourly, dict):
+        raise ValueError("Open-Meteo hat keine stündlichen Wetterdaten geliefert.")
+
+    timestamps = hourly.get("time")
+    temperatures = hourly.get("temperature_2m")
+    if (
+        not isinstance(timestamps, list)
+        or not isinstance(temperatures, list)
+        or len(timestamps) != len(temperatures)
+    ):
+        raise ValueError("Die Open-Meteo-Wetterdaten haben ein ungültiges Format.")
+
+    weather = pd.DataFrame({
+        "Timestamp": pd.to_datetime(timestamps, errors="coerce", utc=True),
+        "Aussen_C": pd.to_numeric(temperatures, errors="coerce"),
+    }).dropna(subset=["Timestamp", "Aussen_C"])
+    if weather.empty:
+        raise ValueError("Open-Meteo hat keine gültigen Außentemperaturen geliefert.")
+
+    return weather.sort_values("Timestamp")
+
+
 # --- 1. REALISTISCHE HKLS-DATENGENERIERUNG ---
 @st.cache_data
 def generate_hvac_data(scenario: str, hours: int = 72):
@@ -1482,10 +1521,34 @@ with telemetry_tab:
         st.info("Für den gewählten Zeitraum liegen keine Messungen vor.")
 
     if is_supabase_prototype:
+        weather_chart_df = pd.DataFrame(columns=["Timestamp", "Aussen_C"])
+        if not chart_df.empty:
+            try:
+                weather_df = load_innsbruck_weather(
+                    chart_df["Timestamp"].min().date().isoformat(),
+                    chart_df["Timestamp"].max().date().isoformat(),
+                )
+                chart_start = chart_df["Timestamp"].min()
+                chart_end = chart_df["Timestamp"].max()
+                weather_chart_df = weather_df[
+                    weather_df["Timestamp"].between(
+                        chart_start.floor("h") - pd.Timedelta(hours=1),
+                        chart_end.ceil("h") + pd.Timedelta(hours=1),
+                    )
+                ]
+            except (httpx.HTTPError, ValueError) as error:
+                st.warning(
+                    f"Innsbrucker Außentemperaturen konnten nicht geladen werden: {error}"
+                )
+
         st.header("Supabase-Temperaturverlauf")
         st.markdown(
-            '<p class="section-kicker">Originalmessungen aus Supabase · Spreizung aus vorläufig zugeordneten Fühlern, bis zum Anschluss nur ein Orientierungswert</p>',
+            '<p class="section-kicker">Originalmessungen aus Supabase · Spreizung vorläufig · stündliche Innsbruck-Wetterdaten von Open-Meteo</p>',
             unsafe_allow_html=True,
+        )
+        st.caption(
+            "Außentemperatur: historische Wettermodell-Daten für Innsbruck "
+            "(ca. 47,27° N, 11,40° E), keine lokale Sensor- oder Live-Messung."
         )
         fig = make_subplots(
             rows=2,
@@ -1493,9 +1556,10 @@ with telemetry_tab:
             shared_xaxes=True,
             vertical_spacing=0.08,
             row_heights=[0.7, 0.3],
+            specs=[[{}], [{"secondary_y": True}]],
             subplot_titles=(
                 "Temperaturen · vorläufige Sensorzuordnung",
-                "Spreizung ΔT (K) · vorläufig",
+                "Spreizung ΔT (K) · vorläufig und Außentemperatur (°C)",
             ),
         )
         sensor_colors = ["#b42318", "#1d4ed8", "#b45309", "#047857", "#475569"]
@@ -1565,15 +1629,37 @@ with telemetry_tab:
                     ),
                     row=2,
                     col=1,
+                    secondary_y=False,
                 )
         else:
             st.info("Für die Spreizung werden mindestens zwei Sensoren benötigt.")
 
+        if not weather_chart_df.empty:
+            fig.add_trace(
+                go.Scatter(
+                    x=weather_chart_df["Timestamp"],
+                    y=weather_chart_df["Aussen_C"],
+                    name="Außentemperatur Innsbruck (°C)",
+                    mode="lines",
+                    line=dict(color="#475569", width=1.5, dash="dot"),
+                ),
+                row=2,
+                col=1,
+                secondary_y=True,
+            )
+            fig.update_xaxes(
+                range=[chart_df["Timestamp"].min(), chart_df["Timestamp"].max()]
+            )
+        else:
+            st.info("Für den ausgewählten Zeitraum liegen keine Innsbruck-Wetterdaten vor.")
+
         fig.update_yaxes(title_text="Temperatur (°C)", row=1, col=1)
-        fig.update_yaxes(title_text="ΔT (K)", row=2, col=1)
+        fig.update_yaxes(title_text="ΔT (K)", row=2, col=1, secondary_y=False)
+        fig.update_yaxes(title_text="Außentemperatur (°C)", row=2, col=1, secondary_y=True)
         chart_alt = (
-            "Temperaturmessungen und vorläufig berechnete Spreizung der "
-            f"Supabase-Sensoren über {len(chart_df)} Messpunkte"
+            "Supabase-Temperaturmessungen, vorläufige Spreizung und "
+            "historische Außentemperatur in Innsbruck über "
+            f"{len(chart_df)} Messpunkte"
         )
     else:
         st.header("Thermodynamischer Zeitverlauf")
