@@ -1630,7 +1630,6 @@ selected_building = selected_location["scenario"]
 is_supabase_prototype = selected_location.get("source") == "supabase"
 
 if is_supabase_prototype:
-    live_mode = False
     st.sidebar.caption("Datenquelle: Supabase · gespeicherte Messungen")
     try:
         df = load_prototype_measurements()
@@ -1681,27 +1680,8 @@ if is_supabase_prototype:
     }]
     loss_eur = 0
 else:
-    st.sidebar.markdown("---")
-    st.sidebar.subheader("⚡ Live-Sensor-Demo (Pitch-Modus)")
-    live_mode = st.sidebar.toggle("ESP32 Live-Eingriff simulieren", value=False)
-
     df = generate_hvac_data(selected_building)
-
-    if live_mode:
-        st.sidebar.info("Simuliere Echtzeit-Werte vom ESP32-Sensor am Rohr:")
-        sim_vl = st.sidebar.slider("Vorlauftemperatur Sensor (°C)", 30.0, 85.0, 68.0, 0.5)
-        sim_rl = st.sidebar.slider("Rücklauftemperatur Sensor (°C)", 25.0, 80.0, 66.0, 0.5)
-        sim_ww = st.sidebar.slider("Warmwasser Sensor (°C)", 35.0, 70.0, 58.0, 0.5)
-
-        # Überschreibe die letzten 12 Datenpunkte (letzte Stunde) mit den Live-Werten für sofortigen Effekt
-        df.loc[df.index[-12:], "Vorlauf_C"] = sim_vl
-        df.loc[df.index[-12:], "Ruecklauf_C"] = sim_rl
-        df.loc[df.index[-12:], "Warmwasser_C"] = sim_ww
-        df.loc[df.index[-12:], "Spreizung_K"] = round(sim_vl - sim_rl, 1)
-
-    issues, loss_eur, _ = diagnose_system(
-        df.tail(36 if live_mode else len(df))
-    )
+    issues, loss_eur, _ = diagnose_system(df)
 
 status_style = {
     "KRITISCH": ("Kritisch", [239, 68, 68]),
