@@ -727,9 +727,41 @@ st.markdown("""
             color: var(--ink);
         }
 
-        .st-key-portfolio_loss_metric [data-testid="stMetricValue"] {
+        .st-key-portfolio_loss_metric [data-testid="stMetric"],
+        .st-key-portfolio_assets_metric [data-testid="stMetric"],
+        .st-key-portfolio_attention_metric [data-testid="stMetric"] {
+            text-align: center;
+        }
+
+        .st-key-portfolio_loss_metric [data-testid="stMetricLabel"],
+        .st-key-portfolio_loss_metric [data-testid="stMetricValue"],
+        .st-key-portfolio_loss_metric [data-testid="stMetricDelta"],
+        .st-key-portfolio_assets_metric [data-testid="stMetricLabel"],
+        .st-key-portfolio_assets_metric [data-testid="stMetricValue"],
+        .st-key-portfolio_attention_metric [data-testid="stMetricLabel"],
+        .st-key-portfolio_attention_metric [data-testid="stMetricValue"],
+        .st-key-portfolio_attention_metric [data-testid="stMetricDelta"] {
+            text-align: center;
+        }
+
+        .st-key-portfolio_loss_metric [data-testid="stMetricValue"],
+        .st-key-portfolio_assets_metric [data-testid="stMetricValue"],
+        .st-key-portfolio_attention_metric [data-testid="stMetricValue"] {
             font-size: clamp(1.6rem, 2.1vw, 2rem);
             font-weight: 760;
+        }
+
+        [class*="st-key-portfolio_problem_card_"] {
+            text-align: center;
+        }
+
+        [class*="st-key-portfolio_problem_card_"] h4,
+        [class*="st-key-portfolio_problem_card_"] [data-testid="stMetricLabel"],
+        [class*="st-key-portfolio_problem_card_"] [data-testid="stMetricValue"],
+        [class*="st-key-portfolio_problem_card_"] [role="status"],
+        [class*="st-key-portfolio_problem_card_"] .stButton button {
+            font-size: 1rem !important;
+            text-align: center !important;
         }
 
         [data-testid="stPydeckChart"] {
@@ -2283,13 +2315,17 @@ with portfolio_tab:
     with loss_col:
         with st.container(key="portfolio_loss_metric"):
             st.metric("Portfolio-Verlust pro Monat", f"€ {portfolio_loss:,}")
-    assets_col.metric("Anlagen im Portfolio", len(portfolio_df))
-    attention_col.metric(
-        "Anlagen mit Handlungsbedarf",
-        attention_count,
-        f"von {len(portfolio_df)} Anlagen",
-        delta_color="inverse",
-    )
+    with assets_col:
+        with st.container(key="portfolio_assets_metric"):
+            st.metric("Anlagen im Portfolio", len(portfolio_df))
+    with attention_col:
+        with st.container(key="portfolio_attention_metric"):
+            st.metric(
+                "Anlagen mit Handlungsbedarf",
+                attention_count,
+                f"von {len(portfolio_df)} Anlagen",
+                delta_color="inverse",
+            )
     st.markdown("### Sofort-Handlungsbedarf")
     problem_buildings = portfolio_df.loc[
         portfolio_df["Status"] != "Optimal"
@@ -2300,7 +2336,10 @@ with portfolio_tab:
             problem_buildings.iterrows()
         ):
             with problem_columns[card_index % len(problem_columns)]:
-                with st.container(border=True):
+                with st.container(
+                    border=True,
+                    key=f"portfolio_problem_card_{location_index}",
+                ):
                     st.markdown(f"#### {building['Objekt']}")
                     if building["Status"] in {"Kritisch", "Hygiene-Alarm"}:
                         status_background = "#b91c1c"
