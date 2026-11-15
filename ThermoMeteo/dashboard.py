@@ -1425,6 +1425,62 @@ with diagnosis_tab:
                 st.caption("Bei aktuellem Anlagenstatus ist kein Einsparpotenzial diagnostiziert.")
 
 with telemetry_tab:
+    period_options = [
+        "Gesamter Zeitraum",
+        "Letzte 24 Stunden",
+        "Letzte 7 Tage",
+        "Letzte 30 Tage",
+        "Benutzerdefiniert",
+    ]
+    selected_period = st.selectbox(
+        "Diagramm-Zeitraum",
+        period_options,
+        key="telemetry_period",
+    )
+    chart_df = df
+    latest_timestamp = df["Timestamp"].max()
+
+    if selected_period == "Benutzerdefiniert":
+        available_start = df["Timestamp"].min().date()
+        available_end = latest_timestamp.date()
+        selected_dates = st.date_input(
+            "Von–bis",
+            value=(available_start, available_end),
+            min_value=available_start,
+            max_value=available_end,
+            format="DD.MM.YYYY",
+            key="telemetry_custom_dates",
+        )
+        if (
+            isinstance(selected_dates, tuple)
+            and len(selected_dates) == 2
+            and all(selected_dates)
+        ):
+            start_date, end_date = selected_dates
+            if start_date <= end_date:
+                measurement_dates = df["Timestamp"].dt.date
+                chart_df = df[
+                    (measurement_dates >= start_date)
+                    & (measurement_dates <= end_date)
+                ]
+            else:
+                chart_df = df.iloc[0:0]
+                st.info("Das Startdatum muss vor oder am Enddatum liegen.")
+        else:
+            chart_df = df.iloc[0:0]
+            st.info("Bitte wählen Sie ein Start- und Enddatum aus.")
+    elif selected_period != "Gesamter Zeitraum":
+        period_durations = {
+            "Letzte 24 Stunden": pd.Timedelta(hours=24),
+            "Letzte 7 Tage": pd.Timedelta(days=7),
+            "Letzte 30 Tage": pd.Timedelta(days=30),
+        }
+        cutoff = latest_timestamp - period_durations[selected_period]
+        chart_df = df[df["Timestamp"] >= cutoff]
+
+    if chart_df.empty:
+        st.info("Für den gewählten Zeitraum liegen keine Messungen vor.")
+
     if is_supabase_prototype:
         st.header("Supabase-Temperaturverlauf")
         st.markdown(
@@ -1434,7 +1490,7 @@ with telemetry_tab:
         fig = go.Figure()
         sensor_colors = ["#b42318", "#1d4ed8", "#b45309", "#047857", "#475569"]
         for sensor_index, (sensor_id, sensor_data) in enumerate(
-            df.groupby("sensor_id", sort=True)
+            chart_df.groupby("sensor_id", sort=True)
         ):
             fig.add_trace(
                 go.Scatter(
@@ -1450,12 +1506,12 @@ with telemetry_tab:
             )
         chart_alt = (
             "Temperaturmessungen der Supabase-Sensoren "
-            f"über {len(df)} Messpunkte"
+            f"über {len(chart_df)} Messpunkte"
         )
     else:
         st.header("Thermodynamischer Zeitverlauf")
         st.markdown(
-            '<p class="section-kicker">Vorlauf, Rücklauf, Warmwasser und Systemspreizung · letzte 72 Stunden</p>',
+            '<p class="section-kicker">Vorlauf, Rücklauf, Warmwasser und Systemspreizung · Zeitraum über die Auswahl einstellbar</p>',
             unsafe_allow_html=True,
         )
 
@@ -1470,9 +1526,9 @@ with telemetry_tab:
             ),
         )
 
-        fig.add_trace(go.Scatter(x=df["Timestamp"], y=df["Vorlauf_C"], name="Vorlauf (T_VL)", line=dict(color="#b42318", width=2)), row=1, col=1)
-        fig.add_trace(go.Scatter(x=df["Timestamp"], y=df["Ruecklauf_C"], name="Rücklauf (T_RL)", line=dict(color="#1d4ed8", width=2)), row=1, col=1)
-        fig.add_trace(go.Scatter(x=df["Timestamp"], y=df["Warmwasser_C"], name="Warmwasser (T_WW)", line=dict(color="#b45309", width=2, dash="dot")), row=1, col=1)
+        fig.add_trace(go.Scatter(x=chart_df["Timestamp"], y=chart_df["Vorlauf_C"], name="Vorlauf (T_VL)", line=dict(color="#b42318", width=2)), row=1, col=1)
+        fig.add_trace(go.Scatter(x=chart_df["Timestamp"], y=chart_df["Ruecklauf_C"], name="Rücklauf (T_RL)", line=dict(color="#1d4ed8", width=2)), row=1, col=1)
+        fig.add_trace(go.Scatter(x=chart_df["Timestamp"], y=chart_df["Warmwasser_C"], name="Warmwasser (T_WW)", line=dict(color="#b45309", width=2, dash="dot")), row=1, col=1)
 
         fig.add_hline(
             y=55,
@@ -1483,8 +1539,8 @@ with telemetry_tab:
             col=1,
         )
 
-        fig.add_trace(go.Scatter(x=df["Timestamp"], y=df["Spreizung_K"], name="Spreizung ΔT (K)", fill="tozeroy", fillcolor="rgba(4, 120, 87, 0.12)", line=dict(color="#047857", width=1.5)), row=2, col=1)
-        fig.add_trace(go.Scatter(x=df["Timestamp"], y=df["Aussen_C"], name="Außentemp. (°C)", line=dict(color="#475569", width=1.5)), row=2, col=1)
+        fig.add_trace(go.Scatter(x=chart_df["Timestamp"], y=chart_df["Spreizung_K"], name="Spreizung ΔT (K)", fill="tozeroy", fillcolor="rgba(4, 120, 87, 0.12)", line=dict(color="#047857", width=1.5)), row=2, col=1)
+        fig.add_trace(go.Scatter(x=chart_df["Timestamp"], y=chart_df["Aussen_C"], name="Außentemp. (°C)", line=dict(color="#475569", width=1.5)), row=2, col=1)
         chart_alt = (
             "Temperaturverlauf von Vorlauf, Rücklauf, Warmwasser, "
             "Spreizung und Außentemperatur"
