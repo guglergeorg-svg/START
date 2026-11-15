@@ -1108,7 +1108,7 @@ def _local_heating_diagnosis(
     return_mean = mean_value(return_temp)
     spread_mean = mean_value(spread)
     temperature_jumps = []
-    for values in (supply, return_temp, spread):
+    for values in (supply, return_temp):
         jump = values.diff().abs().max()
         if pd.notna(jump):
             temperature_jumps.append(float(jump))
@@ -1125,73 +1125,92 @@ def _local_heating_diagnosis(
     if provisional or not complete:
         status = "Warnung"
         summary = (
-            "Die Temperaturfühler sind noch nicht eindeutig zugeordnet."
+            "Die Temperaturfühler sind noch nicht richtig zugeordnet."
             if provisional
-            else "Die vorhandenen Werte reichen noch nicht für eine sichere Einschätzung."
+            else "Für eine verlässliche Diagnose fehlen Temperaturwerte."
         )
         measure = (
-            "Bitte den Installateur die Fühler anschließen und eindeutig dem "
-            "warmen Hinweg und dem kühleren Rückweg zuordnen lassen. Danach "
-            "soll die Heizung erneut geprüft werden."
+            "Der Installateur muss beide Temperaturfühler richtig zuordnen "
+            "und die Messwerte prüfen."
             if provisional
-            else "Bitte den Installateur die Temperaturfühler und die fehlenden "
-            "Messwerte prüfen lassen, bevor über eine Reparatur entschieden wird."
+            else "Der Installateur muss die Temperaturfühler und die fehlenden "
+            "Messwerte prüfen."
         )
-    elif max_jump >= 10:
-        status = "Kritisch"
-        summary = "Die Temperatur hat sich ungewöhnlich stark verändert."
-        measure = (
-            "Bitte den Installateur die Temperaturfühler und die Heizungssteuerung "
-            "zeitnah prüfen und die auffällige Änderung vor Ort nachmessen lassen."
-        )
-    elif spread_mean < 3 or spread_mean > 15 or max_jump >= 5:
-        status = "Warnung"
-        summary = "Die Temperaturen weichen von einem üblichen Heizbetrieb ab."
-        measure = (
-            "Bitte den Installateur prüfen lassen, ob genug Heizwasser durch "
-            "die Anlage fließt und ob die Temperaturfühler richtig sitzen."
-        )
-    else:
-        status = "Optimal"
-        summary = "Die Heizung arbeitet nach den vorhandenen Werten unauffällig."
-        measure = (
-            "Die Anlage wie bisher betreiben und die Temperaturen regelmäßig "
-            "überprüfen lassen."
-        )
-
-    def format_value(value: float | None, unit: str) -> str:
-        return f"{value:.1f} {unit}" if value is not None else "nicht verfügbar"
-
-    if estimated_monthly_loss_eur and estimated_monthly_loss_eur > 0:
-        formatted_loss = f"{estimated_monthly_loss_eur:,.0f}".replace(",", ".")
-        cost_note = (
-            f"Der zusätzliche Energieverbrauch kostet nach einer groben "
-            f"Schätzung etwa {formatted_loss} Euro im Monat."
-        )
-    else:
-        cost_note = "Eine verlässliche Kostenschätzung liegt derzeit nicht vor."
-
-    if complete:
         observation = (
-            "Einfache Einschätzung anhand der vorhandenen Temperaturen: "
-            f"Das Heizwasser kam im Schnitt mit {format_value(supply_mean, 'Grad')} "
-            f"in die Heizkörper und mit {format_value(return_mean, 'Grad')} zurück. "
-            f"Der Abstand zwischen den Temperaturen betrug "
-            f"{format_value(spread_mean, 'Grad')}. Zwischen zwei Messungen "
-            f"änderte sich die Temperatur höchstens um {format_value(max_jump, 'Grad')}. "
-            f"{cost_note}"
+            "Wir können Vor- und Rücklauftemperatur noch nicht zuverlässig "
+            "vergleichen, weil die Fühler nicht sicher zugeordnet sind."
+            if provisional
+            else "Die vorhandenen Messwerte reichen nicht aus, um die "
+            "Temperaturen im Heizkreislauf sicher zu vergleichen."
         )
     else:
-        observation = (
-            "Einfache Einschätzung: Die vorhandenen Angaben reichen nicht aus, "
-            "um die Temperatur "
-            f"des Heizwassers auf dem Hin- und Rückweg zu vergleichen. {cost_note}"
+        loss_amount = (
+            f"{estimated_monthly_loss_eur:,.0f}".replace(",", ".")
+            if estimated_monthly_loss_eur is not None
+            and estimated_monthly_loss_eur > 0
+            else None
         )
-    if provisional:
-        observation += (
-            " Die Fühler sind noch nicht eindeutig zugeordnet; die Werte "
-            "könnten deshalb vom falschen Rohr stammen."
-        )
+        if max_jump > 6:
+            status = "Kritisch" if max_jump >= 10 else "Warnung"
+            summary = (
+                f"Heizkessel schaltet ständig ein und aus (Takten) – ca. "
+                f"{loss_amount} € Mehrverbrauch pro Monat."
+                if loss_amount
+                else "Heizkessel schaltet ständig ein und aus (Takten) – "
+                "der Mehrverbrauch lässt sich nicht verlässlich beziffern."
+            )
+            observation = (
+                f"Die Temperatur springt alle paar Minuten um bis zu "
+                f"{max_jump:.0f} °C hoch und runter. Außerdem heizt die Anlage "
+                "nachts genauso stark durch wie am Tag."
+            )
+            measure = (
+                "Der Installateur muss am Kesselregler die Nachtabsenkung "
+                "aktivieren und die Brenner-Pausenzeit verlängern (schont den "
+                "Kessel und spart Gas)."
+            )
+        elif spread_mean < 5:
+            status = "Warnung"
+            summary = (
+                f"Heizwasser fließt fast ungekühlt zurück – ca. {loss_amount} € "
+                "Energieverlust pro Monat."
+                if loss_amount
+                else "Heizwasser fließt fast ungekühlt zurück – ein zusätzlicher "
+                "Energieverlust ist wahrscheinlich."
+            )
+            observation = (
+                f"Das Heizwasser fließt mit Ø {supply_mean:.0f} °C in das "
+                f"Gebäude, kommt aber fast genauso heiß (Ø {return_mean:.0f} °C) "
+                f"wieder im Keller an. Der Temperaturunterschied beträgt nur "
+                f"{spread_mean:.1f} °C (normal sind 12 bis 15 °C). Die Wärme "
+                "wird nicht richtig an die Heizkörper abgegeben."
+            )
+            measure = (
+                "Der Installateur muss die Heizungspumpe niedriger stellen und "
+                "das Überströmventil prüfen, damit das Wasser langsamer durch "
+                "die Heizkörper fließt."
+            )
+        elif spread_mean > 15:
+            status = "Warnung"
+            summary = "Das Heizwasser kühlt auf dem Weg zu stark ab."
+            observation = (
+                f"Der Temperaturunterschied beträgt {spread_mean:.1f} °C; "
+                "normal sind 12 bis 15 °C."
+            )
+            measure = (
+                "Der Installateur soll die Heizkurve und den Wasserfluss durch "
+                "die Heizkörper prüfen."
+            )
+        else:
+            status = "Optimal"
+            summary = "Alles im grünen Bereich – die Heizung arbeitet sparsam und zuverlässig."
+            observation = (
+                f"Das Heizwasser geht mit Ø {supply_mean:.0f} °C in die "
+                f"Heizkörper und kommt abgekühlt mit Ø {return_mean:.0f} °C "
+                f"zurück ({spread_mean:.0f} °C Unterschied – optimal sind "
+                "12 bis 15 °C). Die Wärme kommt genau dort an, wo sie gebraucht wird."
+            )
+            measure = "Es ist kein Eingriff nötig. Alle Einstellungen können so bleiben."
 
     return {
         "status": status,
@@ -1229,31 +1248,76 @@ def analyze_heating_chart(
         index_label="Timestamp",
         float_format="%.1f",
     )
-    system_instruction = (
-        "Du erklärst einer Hausverwaltung ohne technisches Vorwissen, was die "
-        "Heizung macht. Schreibe in einfachem Deutsch und mit kurzen Sätzen. "
-        "Vermeide Fachwörter oder erkläre sie sofort. Beschreibe, was die "
-        "Temperaturen über das Heizwasser aussagen, ob dadurch unnötig Energie "
-        "verbraucht werden könnte und was der Installateur konkret prüfen soll. "
-        "Erfinde keine Messwerte, Ursachen oder Reparaturpreise. "
-    )
-    if estimated_monthly_loss_eur and estimated_monthly_loss_eur > 0:
-        system_instruction += (
-            f"Die grobe Schätzung für zusätzliche Energiekosten beträgt etwa "
-            f"{estimated_monthly_loss_eur:.0f} Euro pro Monat. Kennzeichne sie "
-            "als Schätzung und nicht als Reparaturpreis. "
+    if estimated_monthly_loss_eur is not None and estimated_monthly_loss_eur > 0:
+        formatted_loss = (
+            f"{estimated_monthly_loss_eur:,.0f}".replace(",", ".")
+        )
+        loss_instruction = (
+            f"Die grobe Schätzung beträgt {formatted_loss} Euro pro Monat. "
+            "Nenne sie als ungefähren Mehrverbrauch, nicht als Reparaturpreis."
+        )
+        low_spread_summary = (
+            f"Heizwasser fließt fast ungekühlt zurück – ca. {formatted_loss} € "
+            "Energieverlust pro Monat."
+        )
+        cycling_summary = (
+            f"Heizkessel schaltet ständig ein und aus (Takten) – ca. "
+            f"{formatted_loss} € Mehrverbrauch pro Monat."
         )
     else:
-        system_instruction += (
-            "Es liegt keine verlässliche Kostenschätzung vor; nenne keinen "
-            "Geldbetrag. "
+        loss_instruction = (
+            "Ein monatlicher Verlust ist nicht verlässlich bezifferbar. "
+            "Erfinde keinen Geldbetrag."
         )
-    system_instruction += (
-        "Gib ausschließlich ein valides JSON-Objekt auf Deutsch mit genau "
+        low_spread_summary = (
+            "Heizwasser fließt fast ungekühlt zurück – ein zusätzlicher "
+            "Energieverlust ist wahrscheinlich."
+        )
+        cycling_summary = (
+            "Heizkessel schaltet ständig ein und aus (Takten) – der "
+            "Mehrverbrauch lässt sich nicht verlässlich beziffern."
+        )
+
+    system_instruction = (
+        "Du erklärst einer Hausverwaltung die Messwerte direkt, klar und in "
+        "Alltagssprache. Keine Roboter-Floskeln, keine Einleitungen und keine "
+        f"erfundenen Werte. {loss_instruction} "
+        "Nutze diese drei Fälle als verbindliche Textvorlage und setze die "
+        "gemessenen Werte ein. Ersetze jeden Platzhalter in geschweiften "
+        "Klammern durch den tatsächlichen Wert aus den Messdaten. "
+        "Ein starker Sprung liegt nur vor, wenn sich Vorlauf oder Rücklauf "
+        "zwischen zwei Messungen um mehr als 6 °C ändern. "
+        "Ordne Fall 1 als Warnung, Fall 2 ab 10 °C Sprung als Kritisch und "
+        "sonst als Warnung sowie Fall 3 als Optimal ein: "
+        f"1) Bei mittlerer Spreizung unter 5 °C: Kurzfazit: "
+        f"'{low_spread_summary}' "
+        "Beobachtung: 'Das Heizwasser fließt mit Ø {avg_vl:.0f} °C in das "
+        "Gebäude, kommt aber fast genauso heiß (Ø {avg_rl:.0f} °C) wieder im "
+        "Keller an. Der Temperaturunterschied beträgt nur {avg_dt:.1f} °C "
+        "(normal sind 12 bis 15 °C). Die Wärme wird nicht richtig an die "
+        "Heizkörper abgegeben.' Maßnahme: 'Der Installateur muss die "
+        "Heizungspumpe niedriger stellen und das Überströmventil prüfen, "
+        "damit das Wasser langsamer durch die Heizkörper fließt.' "
+        f"2) Bei einem Temperatursprung zwischen Messungen über 6 °C: "
+        f"Kurzfazit: '{cycling_summary}' "
+        "Beobachtung: 'Die Temperatur springt alle paar Minuten um bis zu "
+        "{max_jump:.0f} °C hoch und runter. Außerdem heizt die Anlage nachts "
+        "genauso stark durch wie am Tag.' Maßnahme: 'Der Installateur muss "
+        "am Kesselregler die Nachtabsenkung aktivieren und die Brenner-"
+        "Pausenzeit verlängern (schont den Kessel und spart Gas).' "
+        "3) Bei unauffälligen Werten: Kurzfazit: 'Alles im grünen Bereich – "
+        "die Heizung arbeitet sparsam und zuverlässig.' Beobachtung: 'Das "
+        "Heizwasser geht mit Ø {avg_vl:.0f} °C in die Heizkörper und kommt "
+        "abgekühlt mit Ø {avg_rl:.0f} °C zurück ({avg_dt:.0f} °C Unterschied "
+        "– optimal sind 12 bis 15 °C). Die Wärme kommt genau dort an, wo sie "
+        "gebraucht wird.' Maßnahme: 'Es ist kein Eingriff nötig. Alle "
+        "Einstellungen können so bleiben.' "
+        "Erwähne die maximale Änderung zwischen Messungen ausschließlich im "
+        "zweiten Fall. Gib ausschließlich ein valides JSON-Objekt mit genau "
         'den Schlüsseln "status", "kurzfazit", "beobachtung" und "massnahme" '
         'zurück. "status" muss exakt "Optimal", "Warnung" oder "Kritisch" sein. '
-        "Wenn die Messwerte keine sichere Einschätzung erlauben, sage das "
-        "verständlich und deutlich."
+        "Wenn Werte fehlen oder die Fühler vorläufig zugeordnet sind, sage "
+        "direkt und ohne Floskeln, dass die Diagnose noch nicht zuverlässig ist."
     )
     if any("vorläufig" in str(column).lower() for column in recent_data.columns):
         system_instruction += (
@@ -1810,7 +1874,7 @@ with details_tab.container(key="dashboard_intro"):
 with diagnosis_tab:
     left_col, right_col = st.container(), st.container()
     analysis_key = (
-        f"heating_ai_analysis_{st.session_state['selected_location_index']}"
+        f"heating_ai_analysis_v2_{st.session_state['selected_location_index']}"
     )
 
     def calculate_building_diagnosis() -> dict[str, str]:
