@@ -1,11 +1,14 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import httpx
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from datetime import datetime, timedelta
 
+from postgrest.exceptions import APIError
 from site_pages import render_site_footer
+from supabase import Client, create_client
 
 # --- CUSTOM STYLING ---
 st.markdown("""
@@ -836,6 +839,54 @@ st.markdown("""
         </style>
 """, unsafe_allow_html=True)
 
+@st.cache_resource
+def init_supabase_connection() -> Client:
+    return create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
+
+
+@st.cache_data(ttl=60)
+def load_prototype_measurements() -> pd.DataFrame:
+    response = (
+        init_supabase_connection()
+        .table("vorlauf_messungen")
+        .select("created_at,sensor_id,temperatur")
+        .order("created_at", desc=True)
+        .limit(1000)
+        .execute()
+    )
+    measurements = pd.DataFrame(response.data)
+    if measurements.empty:
+        return pd.DataFrame(columns=["Timestamp", "sensor_id", "Temperatur_C"])
+
+    required_columns = {"created_at", "sensor_id", "temperatur"}
+    missing_columns = required_columns.difference(measurements.columns)
+    if missing_columns:
+        raise ValueError(
+            "Die Supabase-Tabelle enthält nicht alle benötigten Spalten: "
+            + ", ".join(sorted(missing_columns))
+        )
+
+    measurements["Timestamp"] = pd.to_datetime(
+        measurements["created_at"],
+        errors="coerce",
+        utc=True,
+    )
+    measurements["sensor_id"] = measurements["sensor_id"].astype("string")
+    measurements["Temperatur_C"] = pd.to_numeric(
+        measurements["temperatur"],
+        errors="coerce",
+    )
+    measurements = measurements.dropna(
+        subset=["Timestamp", "sensor_id", "Temperatur_C"]
+    )
+    if measurements.empty:
+        raise ValueError("Supabase enthält keine gültigen Temperaturmessungen.")
+
+    return measurements[
+        ["Timestamp", "sensor_id", "Temperatur_C"]
+    ].sort_values("Timestamp")
+
+
 # --- 1. REALISTISCHE HKLS-DATENGENERIERUNG ---
 @st.cache_data
 def generate_hvac_data(scenario: str, hours: int = 72):
@@ -999,6 +1050,13 @@ portfolio_locations.extend(
     for name, latitude, longitude in demo_optimal_locations
 )
 
+prototype_location = {
+    "scenario": "Supabase-Messungen",
+    "building": "Prototypen Anlage",
+    "source": "supabase",
+}
+available_locations = portfolio_locations + [prototype_location]
+
 
 def sync_location_selection(widget_key: str) -> None:
     st.session_state["selected_location_index"] = st.session_state[widget_key]
@@ -1007,37 +1065,89 @@ def sync_location_selection(widget_key: str) -> None:
 for state_key in ("selected_location_index", "sidebar_location_index"):
     st.session_state.setdefault(state_key, 0)
 
-selected_location = portfolio_locations[st.session_state["selected_location_index"]]
 st.sidebar.selectbox(
     "Liegenschaft auswählen:",
-    options=range(len(portfolio_locations)),
-    format_func=lambda index: portfolio_locations[index]["building"],
+    options=range(len(available_locations)),
+    format_func=lambda index: available_locations[index]["building"],
     key="sidebar_location_index",
     on_change=sync_location_selection,
     args=("sidebar_location_index",),
 )
+selected_location = available_locations[st.session_state["selected_location_index"]]
 selected_building = selected_location["scenario"]
+is_supabase_prototype = selected_location.get("source") == "supabase"
 
-st.sidebar.markdown("---")
-st.sidebar.subheader("⚡ Live-Sensor-Demo (Pitch-Modus)")
-live_mode = st.sidebar.toggle("ESP32 Live-Eingriff simulieren", value=False)
+if is_supabase_prototype:
+    live_mode = False
+    st.sidebar.caption("Datenquelle: Supabase · gespeicherte Messungen")
+    try:
+        df = load_prototype_measurements()
+    except (KeyError, APIError, httpx.HTTPError, ValueError) as error:
+        st.error(f"Supabase-Messungen konnten nicht geladen werden: {error}")
+        st.stop()
+    if df.empty:
+        st.error("In Supabase wurden noch keine Messungen für die Prototypen Anlage gefunden.")
+        st.stop()
+    latest_by_sensor = (
+        df.groupby("sensor_id", as_index=False)
+        .tail(1)
+        .sort_values("sensor_id")
+    )
+    sensor_assignments = {}
+    for sensor_index, sensor_id in enumerate(sorted(df["sensor_id"].unique())):
+        if sensor_index == 0:
+            sensor_label = "Vorlauf (vorläufig)"
+        elif sensor_index == 1:
+            sensor_label = "Rücklauf (vorläufig)"
+        else:
+            sensor_label = f"Zusatzsensor {sensor_id}"
+        sensor_assignments[sensor_id] = sensor_label
+    df["Messstelle"] = df["sensor_id"].map(sensor_assignments)
+    latest_by_sensor["Messstelle"] = latest_by_sensor["sensor_id"].map(
+        sensor_assignments
+    )
+    assignment_summary = "; ".join(
+        f"{label}: Sensor {sensor_id}"
+        for sensor_id, label in sensor_assignments.items()
+    )
+    issues = [{
+        "severity": "WARNUNG",
+        "title": "Vorlauf/Rücklauf-Zuordnung ist nur vorläufig",
+        "desc": (
+            f"{assignment_summary}. "
+            "Die Zuordnung erfolgt beliebig nach Sensor-ID und ist nicht "
+            "fachlich bestätigt. Da die Fühler noch nicht angeschlossen sind, "
+            "werden keine HKLS-Grenzwerte oder Einsparungen diagnostiziert."
+        ),
+        "action": (
+            "Nach dem Anschluss die Sensorzuordnung vor Ort prüfen und "
+            "bestätigen, bevor automatische Anlagenalarme aktiviert werden."
+        ),
+    }]
+    loss_eur = 0
+    ticket_body = ""
+else:
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("⚡ Live-Sensor-Demo (Pitch-Modus)")
+    live_mode = st.sidebar.toggle("ESP32 Live-Eingriff simulieren", value=False)
 
-df = generate_hvac_data(selected_building)
+    df = generate_hvac_data(selected_building)
 
-if live_mode:
-    st.sidebar.info("Simuliere Echtzeit-Werte vom ESP32-Sensor am Rohr:")
-    sim_vl = st.sidebar.slider("Vorlauftemperatur Sensor (°C)", 30.0, 85.0, 68.0, 0.5)
-    sim_rl = st.sidebar.slider("Rücklauftemperatur Sensor (°C)", 25.0, 80.0, 66.0, 0.5)
-    sim_ww = st.sidebar.slider("Warmwasser Sensor (°C)", 35.0, 70.0, 58.0, 0.5)
-    
-    # Überschreibe die letzten 12 Datenpunkte (letzte Stunde) mit den Live-Werten für sofortigen Effekt
-    df.loc[df.index[-12:], "Vorlauf_C"] = sim_vl
-    df.loc[df.index[-12:], "Ruecklauf_C"] = sim_rl
-    df.loc[df.index[-12:], "Warmwasser_C"] = sim_ww
-    df.loc[df.index[-12:], "Spreizung_K"] = round(sim_vl - sim_rl, 1)
+    if live_mode:
+        st.sidebar.info("Simuliere Echtzeit-Werte vom ESP32-Sensor am Rohr:")
+        sim_vl = st.sidebar.slider("Vorlauftemperatur Sensor (°C)", 30.0, 85.0, 68.0, 0.5)
+        sim_rl = st.sidebar.slider("Rücklauftemperatur Sensor (°C)", 25.0, 80.0, 66.0, 0.5)
+        sim_ww = st.sidebar.slider("Warmwasser Sensor (°C)", 35.0, 70.0, 58.0, 0.5)
 
-# Diagnose ausführen
-issues, loss_eur, ticket_body = diagnose_system(df.tail(36 if live_mode else len(df)))
+        # Überschreibe die letzten 12 Datenpunkte (letzte Stunde) mit den Live-Werten für sofortigen Effekt
+        df.loc[df.index[-12:], "Vorlauf_C"] = sim_vl
+        df.loc[df.index[-12:], "Ruecklauf_C"] = sim_rl
+        df.loc[df.index[-12:], "Warmwasser_C"] = sim_ww
+        df.loc[df.index[-12:], "Spreizung_K"] = round(sim_vl - sim_rl, 1)
+
+    issues, loss_eur, ticket_body = diagnose_system(
+        df.tail(36 if live_mode else len(df))
+    )
 
 status_style = {
     "KRITISCH": ("Kritisch", [239, 68, 68]),
@@ -1083,6 +1193,18 @@ portfolio_tab, details_tab, diagnosis_tab, telemetry_tab = st.tabs([
 
 # --- ANLAGENDETAILS: HEADER & KPI CARDS ---
 building_name = selected_location["building"]
+latest_update = df["Timestamp"].iloc[-1].strftime("%d.%m.%Y %H:%M")
+if is_supabase_prototype:
+    connection_label = "Supabase-Daten geladen"
+    connection_detail = f"{df['sensor_id'].nunique()} Sensoren"
+    update_timezone = " UTC"
+    update_label = "Letzte Messung"
+else:
+    connection_label = "Gateway online"
+    connection_detail = "LTE-M · −74 dBm"
+    update_timezone = ""
+    update_label = "Aktualisiert"
+
 with details_tab.container(key="dashboard_intro"):
     st.markdown(
         f"""
@@ -1092,10 +1214,10 @@ with details_tab.container(key="dashboard_intro"):
             <h1>Wärme im<br>Gleichgewicht.</h1>
             <p class="hero-building">Anlagenübersicht für <strong>{building_name}</strong></p>
             <div class="hero-meta">
-                <span class="gateway-status"><span class="gateway-dot"></span> Gateway online</span>
-                <span>LTE-M · −74 dBm</span>
+                <span class="gateway-status"><span class="gateway-dot"></span> {connection_label}</span>
+                <span>{connection_detail}</span>
                 <span>·</span>
-                <span>Aktualisiert {df['Timestamp'].iloc[-1].strftime('%H:%M')} Uhr</span>
+                <span>{update_label} {latest_update}{update_timezone}</span>
             </div>
         </div>
         <svg class="hero-art" viewBox="0 0 390 220" role="img" aria-label="Animierte Visualisierung des Heizkreislaufs">
@@ -1133,23 +1255,60 @@ with details_tab.container(key="dashboard_intro"):
         unsafe_allow_html=True,
     )
 
-    latest = df.iloc[-1]
     with st.container(key="kpi_grid"):
-        col1, col2, col3, col4, col5 = st.columns(5)
+        if is_supabase_prototype:
+            prototype_metrics = [
+                (row.Messstelle, f"{row.Temperatur_C:.1f} °C")
+                for row in latest_by_sensor.itertuples(index=False)
+            ]
+            prototype_metrics.extend([
+                ("Sensoren", str(df["sensor_id"].nunique())),
+                ("Messpunkte", f"{len(df):,}"),
+            ])
+            metric_columns = st.columns(len(prototype_metrics))
+            for column, (label, value) in zip(metric_columns, prototype_metrics):
+                column.metric(label, value)
+        else:
+            latest = df.iloc[-1]
+            col1, col2, col3, col4, col5 = st.columns(5)
 
-        col1.metric("Vorlauf", f"{latest['Vorlauf_C']} °C", f"{latest['Vorlauf_C'] - df['Vorlauf_C'].iloc[-15]:.1f} °C (1h)")
-        col2.metric("Rücklauf", f"{latest['Ruecklauf_C']} °C", f"{latest['Ruecklauf_C'] - df['Ruecklauf_C'].iloc[-15]:.1f} °C (1h)", delta_color="inverse")
-        col3.metric("Spreizung", f"{latest['Spreizung_K']} K", "Ziel: 12-15 K" if latest['Spreizung_K'] < 8 else "Optimal", delta_color="normal" if latest['Spreizung_K'] >= 10 else "inverse")
-        col4.metric("Warmwasser", f"{latest['Warmwasser_C']} °C", "Hygiene OK" if latest['Warmwasser_C'] >= 55 else "Zu niedrig!", delta_color="normal" if latest['Warmwasser_C'] >= 55 else "inverse")
-        col5.metric("Mehrverbrauch", f"€ {loss_eur} / Mo.", f"6 Mon. €{loss_eur * 6:,}" if loss_eur > 0 else "Kein Verlust", delta_color="inverse")
+            col1.metric("Vorlauf", f"{latest['Vorlauf_C']} °C", f"{latest['Vorlauf_C'] - df['Vorlauf_C'].iloc[-15]:.1f} °C (1h)")
+            col2.metric("Rücklauf", f"{latest['Ruecklauf_C']} °C", f"{latest['Ruecklauf_C'] - df['Ruecklauf_C'].iloc[-15]:.1f} °C (1h)", delta_color="inverse")
+            col3.metric("Spreizung", f"{latest['Spreizung_K']} K", "Ziel: 12-15 K" if latest['Spreizung_K'] < 8 else "Optimal", delta_color="normal" if latest['Spreizung_K'] >= 10 else "inverse")
+            col4.metric("Warmwasser", f"{latest['Warmwasser_C']} °C", "Hygiene OK" if latest['Warmwasser_C'] >= 55 else "Zu niedrig!", delta_color="normal" if latest['Warmwasser_C'] >= 55 else "inverse")
+            col5.metric("Mehrverbrauch", f"€ {loss_eur} / Mo.", f"6 Mon. €{loss_eur * 6:,}" if loss_eur > 0 else "Kein Verlust", delta_color="inverse")
+
+    if is_supabase_prototype:
+        st.subheader("Letzte Supabase-Messungen")
+        recent_measurements = (
+            df.sort_values("Timestamp", ascending=False)
+            .head(20)
+            .rename(columns={
+                "Timestamp": "Zeitpunkt",
+                "Messstelle": "Vorläufige Messstelle",
+                "sensor_id": "Sensor-ID",
+                "Temperatur_C": "Temperatur (°C)",
+            })
+        )
+        st.dataframe(recent_measurements, width="stretch", hide_index=True)
 
 with diagnosis_tab:
     left_col, right_col = st.columns([1.5, 1], gap="large")
 
     with left_col:
-        st.header("Automatische HKLS-Anlagendiagnose")
+        diagnosis_title = (
+            "Supabase-Datencheck"
+            if is_supabase_prototype
+            else "Automatische HKLS-Anlagendiagnose"
+        )
+        diagnosis_kicker = (
+            "Messwerte aus der konfigurierten Supabase-Tabelle"
+            if is_supabase_prototype
+            else "Erkannte Abweichungen und empfohlene Maßnahmen"
+        )
+        st.header(diagnosis_title)
         st.markdown(
-            '<p class="section-kicker">Erkannte Abweichungen und empfohlene Maßnahmen</p>',
+            f'<p class="section-kicker">{diagnosis_kicker}</p>',
             unsafe_allow_html=True,
         )
         for issue_index, issue in enumerate(issues):
@@ -1168,12 +1327,27 @@ with diagnosis_tab:
                     st.success(message)
 
     with right_col:
-        st.header("Installateur-Ticket")
+        st.header(
+            "Datenzuordnung"
+            if is_supabase_prototype
+            else "Installateur-Ticket"
+        )
         st.markdown(
-            '<p class="section-kicker">Auftragsentwurf direkt aus der Diagnose</p>',
+            (
+                '<p class="section-kicker">Benötigte Sensor-Metadaten</p>'
+                if is_supabase_prototype
+                else '<p class="section-kicker">Auftragsentwurf direkt aus der Diagnose</p>'
+            ),
             unsafe_allow_html=True,
         )
-        if loss_eur > 0:
+        if is_supabase_prototype:
+            st.info(
+                f"Vorläufige Zuordnung: {assignment_summary}. "
+                "Die Fühler sind noch nicht angeschlossen; die Bezeichnungen "
+                "sind daher keine bestätigten Vorlauf-/Rücklaufmessungen. "
+                "Automatische HKLS-Alarme bleiben deaktiviert."
+            )
+        elif loss_eur > 0:
             default_ticket = (
                 f"An: Kundendienst HKLS-Partnerbetrieb\n"
                 f"Objekt: {building_name}, 6020 Innsbruck\n\n"
@@ -1199,61 +1373,92 @@ with diagnosis_tab:
         else:
             st.info("Kein Wartungsticket erforderlich. Anlage arbeitet innerhalb aller Grenzwerte.")
 
-        st.markdown("### Amortisations-Benchmark")
-        investment_cost = st.number_input(
-            "Geschätzte Maßnahmenkosten (€)",
-            min_value=0,
-            step=250,
-            value=0,
-            key="investment_cost",
-        )
-        st.metric("Einsparpotenzial pro Heizsaison", f"€ {loss_eur * 6:,}")
-        if investment_cost > 0 and loss_eur > 0:
-            st.caption(
-                f"Geschätzte Amortisation: "
-                f"{investment_cost / loss_eur:.1f} Monate bei € {loss_eur:,} "
-                "Einsparpotenzial pro Monat."
+        if not is_supabase_prototype:
+            st.markdown("### Amortisations-Benchmark")
+            investment_cost = st.number_input(
+                "Geschätzte Maßnahmenkosten (€)",
+                min_value=0,
+                step=250,
+                value=0,
+                key="investment_cost",
             )
-        elif loss_eur > 0:
-            st.caption("Maßnahmenkosten eintragen, um die Amortisationszeit zu schätzen.")
-        else:
-            st.caption("Bei aktuellem Anlagenstatus ist kein Einsparpotenzial diagnostiziert.")
+            st.metric("Einsparpotenzial pro Heizsaison", f"€ {loss_eur * 6:,}")
+            if investment_cost > 0 and loss_eur > 0:
+                st.caption(
+                    f"Geschätzte Amortisation: "
+                    f"{investment_cost / loss_eur:.1f} Monate bei € {loss_eur:,} "
+                    "Einsparpotenzial pro Monat."
+                )
+            elif loss_eur > 0:
+                st.caption("Maßnahmenkosten eintragen, um die Amortisationszeit zu schätzen.")
+            else:
+                st.caption("Bei aktuellem Anlagenstatus ist kein Einsparpotenzial diagnostiziert.")
 
 with telemetry_tab:
-    st.header("Thermodynamischer Zeitverlauf")
-    st.markdown(
-        '<p class="section-kicker">Vorlauf, Rücklauf, Warmwasser und Systemspreizung · letzte 72 Stunden</p>',
-        unsafe_allow_html=True,
-    )
+    if is_supabase_prototype:
+        st.header("Supabase-Temperaturverlauf")
+        st.markdown(
+            '<p class="section-kicker">Originalmessungen aus Supabase · Vorlauf/Rücklauf beliebig und vorläufig zugeordnet</p>',
+            unsafe_allow_html=True,
+        )
+        fig = go.Figure()
+        sensor_colors = ["#b42318", "#1d4ed8", "#b45309", "#047857", "#475569"]
+        for sensor_index, (sensor_id, sensor_data) in enumerate(
+            df.groupby("sensor_id", sort=True)
+        ):
+            fig.add_trace(
+                go.Scatter(
+                    x=sensor_data["Timestamp"],
+                    y=sensor_data["Temperatur_C"],
+                    name=sensor_assignments[sensor_id],
+                    mode="lines",
+                    line=dict(
+                        color=sensor_colors[sensor_index % len(sensor_colors)],
+                        width=2,
+                    ),
+                )
+            )
+        chart_alt = (
+            "Temperaturmessungen der Supabase-Sensoren "
+            f"über {len(df)} Messpunkte"
+        )
+    else:
+        st.header("Thermodynamischer Zeitverlauf")
+        st.markdown(
+            '<p class="section-kicker">Vorlauf, Rücklauf, Warmwasser und Systemspreizung · letzte 72 Stunden</p>',
+            unsafe_allow_html=True,
+        )
 
-    fig = make_subplots(
-        rows=2, cols=1,
-        shared_xaxes=True,
-        vertical_spacing=0.08,
-        row_heights=[0.7, 0.3],
-        subplot_titles=(
-            "Systemtemperaturen (Vorlauf, Rücklauf, Warmwasser)",
-            "Systemspreizung ΔT (K) & Außentemperatur (°C)",
-        ),
-    )
+        fig = make_subplots(
+            rows=2, cols=1,
+            shared_xaxes=True,
+            vertical_spacing=0.08,
+            row_heights=[0.7, 0.3],
+            subplot_titles=(
+                "Systemtemperaturen (Vorlauf, Rücklauf, Warmwasser)",
+                "Systemspreizung ΔT (K) & Außentemperatur (°C)",
+            ),
+        )
 
-    # Obere Grafik: VL, RL, WW
-    fig.add_trace(go.Scatter(x=df["Timestamp"], y=df["Vorlauf_C"], name="Vorlauf (T_VL)", line=dict(color="#b42318", width=2)), row=1, col=1)
-    fig.add_trace(go.Scatter(x=df["Timestamp"], y=df["Ruecklauf_C"], name="Rücklauf (T_RL)", line=dict(color="#1d4ed8", width=2)), row=1, col=1)
-    fig.add_trace(go.Scatter(x=df["Timestamp"], y=df["Warmwasser_C"], name="Warmwasser (T_WW)", line=dict(color="#b45309", width=2, dash="dot")), row=1, col=1)
+        fig.add_trace(go.Scatter(x=df["Timestamp"], y=df["Vorlauf_C"], name="Vorlauf (T_VL)", line=dict(color="#b42318", width=2)), row=1, col=1)
+        fig.add_trace(go.Scatter(x=df["Timestamp"], y=df["Ruecklauf_C"], name="Rücklauf (T_RL)", line=dict(color="#1d4ed8", width=2)), row=1, col=1)
+        fig.add_trace(go.Scatter(x=df["Timestamp"], y=df["Warmwasser_C"], name="Warmwasser (T_WW)", line=dict(color="#b45309", width=2, dash="dot")), row=1, col=1)
 
-    fig.add_hline(
-        y=55,
-        line_dash="dash",
-        line_color="#64748b",
-        annotation_text="55°C Referenz",
-        row=1,
-        col=1,
-    )
+        fig.add_hline(
+            y=55,
+            line_dash="dash",
+            line_color="#64748b",
+            annotation_text="55°C Referenz",
+            row=1,
+            col=1,
+        )
 
-    # Untere Grafik: Spreizung & Außentemperatur
-    fig.add_trace(go.Scatter(x=df["Timestamp"], y=df["Spreizung_K"], name="Spreizung ΔT (K)", fill="tozeroy", fillcolor="rgba(4, 120, 87, 0.12)", line=dict(color="#047857", width=1.5)), row=2, col=1)
-    fig.add_trace(go.Scatter(x=df["Timestamp"], y=df["Aussen_C"], name="Außentemp. (°C)", line=dict(color="#475569", width=1.5)), row=2, col=1)
+        fig.add_trace(go.Scatter(x=df["Timestamp"], y=df["Spreizung_K"], name="Spreizung ΔT (K)", fill="tozeroy", fillcolor="rgba(4, 120, 87, 0.12)", line=dict(color="#047857", width=1.5)), row=2, col=1)
+        fig.add_trace(go.Scatter(x=df["Timestamp"], y=df["Aussen_C"], name="Außentemp. (°C)", line=dict(color="#475569", width=1.5)), row=2, col=1)
+        chart_alt = (
+            "Temperaturverlauf von Vorlauf, Rücklauf, Warmwasser, "
+            "Spreizung und Außentemperatur"
+        )
 
     fig.update_layout(
         height=550,
@@ -1295,7 +1500,7 @@ with telemetry_tab:
         width="stretch",
         config={"responsive": True},
         theme=None,
-        alt="Temperaturverlauf von Vorlauf, Rücklauf, Warmwasser, Spreizung und Außentemperatur",
+        alt=chart_alt,
     )
 
 with portfolio_tab:
