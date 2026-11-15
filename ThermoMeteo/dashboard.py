@@ -1067,7 +1067,7 @@ def analyze_heating_chart(df: pd.DataFrame) -> str:
     client = genai.Client(api_key=api_key)
     try:
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-3.8-flash",
             contents=f"Heizungsdaten als CSV:\n{csv_data}",
             config=types.GenerateContentConfig(
                 system_instruction=system_instruction,
@@ -1518,7 +1518,7 @@ with diagnosis_tab:
         )
         st.caption(
             "Beim Klick werden die letzten 60 Messpunkte an Google Gemini "
-            "(gemini-2.5-flash) zur Analyse gesendet."
+            "(gemini-3.8-flash) zur Analyse gesendet."
         )
         analysis_key = (
             f"heating_ai_analysis_{st.session_state['selected_location_index']}"
